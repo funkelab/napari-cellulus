@@ -1,21 +1,29 @@
-"""
-This module is an example of a barebones sample data provider for napari.
+import numpy as np
 
-It implements the "sample data" specification.
-see: https://napari.org/stable/plugins/guides.html?#sample-data
+from pathlib import Path
 
-Replace code below according to your needs.
-"""
-from __future__ import annotations
-
-import numpy
+TISSUENET_SAMPLE = Path(__file__).parent / "sample_data/tissuenet-sample.npy"
 
 
-def make_sample_data():
-    """Generates an image"""
-    # Return list of tuples
-    # [(data1, add_image_kwargs1), (data2, add_image_kwargs2)]
-    # Check the documentation for more information about the
-    # add_image_kwargs
-    # https://napari.org/stable/api/napari.Viewer.html#napari.Viewer.add_image
-    return [(numpy.random.rand(512, 512), {})]
+def tissuenet_sample():
+    (x, y) = np.load(TISSUENET_SAMPLE, "r")
+    x = x.transpose(0, 3, 1, 2)
+    y = y.transpose(0, 3, 1, 2).astype(np.uint8)
+    return [
+        (
+            x[100:105],
+            {
+                "name": "Raw",
+                "metadata": {"axes": ["s", "c", "y", "x"]},
+            },
+            "image",
+        ),
+        (
+            y[100:105],
+            {
+                "name": "Labels",
+                "metadata": {"axes": ["s", "c", "y", "x"]},
+            },
+            "Labels",
+        ),
+    ]

@@ -2,27 +2,36 @@ name: napari-cellulus
 display_name: Cellulus
 contributions:
   commands:
-    - id: napari-cellulus.make_sample_data
-      python_name: napari_cellulus._sample_data:make_sample_data
+    - id: napari-cellulus.tissuenet_sample
+      python_name: napari_cellulus._sample_data:tissuenet_sample
       title: Load sample data from Cellulus
-    - id: napari-cellulus.make_qwidget
-      python_name: napari_cellulus._widget:ExampleQWidget
-      title: Make example QWidget
-    - id: napari-cellulus.make_magic_widget
-      python_name: napari_cellulus._widget:example_magic_widget
-      title: Make example magic widget
-    - id: napari-cellulus.make_func_widget
-      python_name: napari_cellulus._widget:example_function_widget
-      title: Make example function widget
+    - id: napari-cellulus.train_config
+      python_name: napari_cellulus._widget:train_config_widget
+      title: Make the training config widget
+    - id: napari-cellulus.model_config
+      python_name: napari_cellulus._widget:model_config_widget
+      title: Make the model config widget
+    - id: napari-cellulus.train_widget
+      python_name: napari_cellulus._widget:TrainWidget
+      title: Make the train widget
+    - id: napari-cellulus.predict_widget
+      python_name: napari_cellulus._widget:predict
+      title: Make the predict widget
+    - id: napari-cellulus.segment_widget
+      python_name: napari_cellulus._widget:segment
+      title: Make the segment widget
   sample_data:
-    - command: napari-cellulus.make_sample_data
+    - command: napari-cellulus.tissuenet_sample
       display_name: Cellulus
       key: unique_id.1
   widgets:
-    - command: napari-cellulus.make_qwidget
-      display_name: Example QWidget
-    - command: napari-cellulus.make_magic_widget
-      display_name: Example Magic Widget
-    - command: napari-cellulus.make_func_widget
-      autogenerate: true
-      display_name: Example Function Widget
+    - command: napari-cellulus.train_config
+      display_name: Train Config Widget
+    - command: napari-cellulus.model_config
+      display_name: Model Config Widget
+    - command: napari-cellulus.train_widget
+      display_name: Train Widget
+    - command: napari-cellulus.predict_widget
+      display_name: Predict Widget
+    - command: napari-cellulus.segment_widget
+      display_name: Segment Widget
