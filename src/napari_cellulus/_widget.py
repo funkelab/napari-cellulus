@@ -279,13 +279,18 @@ def predict(
             batch = pipeline.request_batch(request)
 
         prediction = batch.arrays[prediction_key].data
+        colormaps = ["red", "green", "blue"]
         prediction = [
             (
                 prediction[:, i : i + 1, ...],
                 {
                     "name": "offset-" + "zyx"[num_channels - i]
                     if i < num_channels
-                    else "std"
+                    else "std",
+                    "colormap": colormaps[num_channels - i]
+                    if i < num_channels
+                    else "grey",
+                    "blending": "additive",
                 },
                 "image",
             )
