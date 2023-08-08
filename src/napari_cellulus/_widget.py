@@ -350,6 +350,44 @@ def segment(
     )
 
 
+@magic_factory(call_button="Save")
+def save(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
+    @thread_worker(
+        connect={"returned": lambda: None},
+        progress={"total": 0, "desc": "Saving"},
+    )
+    def async_save(path: Path = Path("checkpoint.pt")) -> None:
+        model, optimizer, scheduler = get_training_state()
+        torch.save(
+            (
+                model.state_dict(),
+                optimizer.state_dict(),
+                scheduler.state_dict(),
+            ),
+            path,
+        )
+
+    return async_save(path)
+
+
+@magic_factory(call_button="Load")
+def load(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
+    @thread_worker(
+        connect={"returned": lambda: None},
+        progress={"total": 0, "desc": "Saving"},
+    )
+    def async_load(path: Path = Path("checkpoint.pt")) -> None:
+        model, optimizer, scheduler = get_training_state()
+        state_dicts = torch.load(
+            path,
+        )
+        model.load_state_dict(state_dicts[0])
+        optimizer.load_state_dict(state_dicts[1])
+        scheduler.load_state_dict(state_dicts[2])
+
+    return async_load(path)
+
+
 class TrainWidget(QWidget):
     def __init__(self, napari_viewer):
         # basic initialization

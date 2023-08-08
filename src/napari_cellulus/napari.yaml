@@ -20,6 +20,12 @@ contributions:
     - id: napari-cellulus.segment_widget
       python_name: napari_cellulus._widget:segment
       title: Make the segment widget
+    - id: napari-cellulus.save_widget
+      python_name: napari_cellulus._widget:save
+      title: Make the save widget
+    - id: napari-cellulus.load_widget
+      python_name: napari_cellulus._widget:load
+      title: Make the load widget
   sample_data:
     - command: napari-cellulus.tissuenet_sample
       display_name: Cellulus
@@ -35,3 +41,7 @@ contributions:
       display_name: Predict Widget
     - command: napari-cellulus.segment_widget
       display_name: Segment Widget
+    - command: napari-cellulus.save_widget
+      display_name: Save Widget
+    - command: napari-cellulus.load_widget
+      display_name: Load Widget
