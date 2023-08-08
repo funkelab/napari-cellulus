@@ -289,7 +289,7 @@ def predict(
                     else "std",
                     "colormap": colormaps[num_channels - i]
                     if i < num_channels
-                    else "grey",
+                    else "gray",
                     "blending": "additive",
                 },
                 "image",
