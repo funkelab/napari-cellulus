@@ -397,11 +397,6 @@ class TrainWidget(QWidget):
         # initialize state variables
         self.__training_generator = None
 
-        # supported axes
-        self.__axes = ["batch", "channel", "time", "z", "y", "x"]
-        self._validation_interval = 100
-        self.__model = None
-
         # Widget layout
         layout = QVBoxLayout()
 
