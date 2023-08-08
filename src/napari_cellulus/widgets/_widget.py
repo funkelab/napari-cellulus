@@ -62,12 +62,35 @@ if TYPE_CHECKING:
     import napari
 
 
+@dataclasses.dataclass
+class TrainingStats:
+    iteration: int = 0
+    losses: list[float] = dataclasses.field(default_factory=list)
+    iterations: list[int] = dataclasses.field(default_factory=list)
+
+    def reset(self):
+        self.iteration = 0
+        self.losses = list([])
+        self.iterations = list([])
+
+    def load(self, other):
+        self.iteration = other.iteration
+        self.losses = other.losses
+        self.iterations = other.iterations
+
+
 ################################## GLOBALS ####################################
 _train_config: Optional[TrainConfig] = None
 _model_config: Optional[ModelConfig] = None
 _model: Optional[torch.nn.Module] = None
 _optimizer: Optional[torch.optim.Optimizer] = None
 _scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
+_training_stats: TrainingStats = TrainingStats()
+
+
+def get_training_stats():
+    global _training_stats
+    return _training_stats
 
 
 def get_train_config(**kwargs):
@@ -361,11 +384,13 @@ def save(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
     )
     def async_save(path: Path = Path("checkpoint.pt")) -> None:
         model, optimizer, scheduler = get_training_state()
+        training_stats = get_training_stats()
         torch.save(
             (
                 model.state_dict(),
                 optimizer.state_dict(),
                 scheduler.state_dict(),
+                training_stats,
             ),
             path,
         )
@@ -381,12 +406,14 @@ def load(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
     )
     def async_load(path: Path = Path("checkpoint.pt")) -> None:
         model, optimizer, scheduler = get_training_state()
+        training_stats = get_training_stats()
         state_dicts = torch.load(
             path,
         )
         model.load_state_dict(state_dicts[0])
         optimizer.load_state_dict(state_dicts[1])
         scheduler.load_state_dict(state_dicts[2])
+        training_stats.load(state_dicts[3])
 
     return async_load(path)
 
@@ -466,15 +493,24 @@ class TrainWidget(QWidget):
             self.__training_generator.quit()
         self.__training_generator = None
         if not keep_stats:
+            training_stats = get_training_stats()
+            training_stats.reset()
             if self.loss_plot is None:
                 self.loss_plot = self.progress_plot.axes.plot(
+                    [],
+                    [],
+                    label="Training Loss",
                 )[0]
                 self.progress_plot.axes.legend()
+                self.progress_plot.axes.set_title(f"Training Progress")
                 self.progress_plot.axes.set_xlabel("Iterations")
                 self.progress_plot.axes.set_ylabel("Loss")
             self.update_progress_plot()
 
     def update_progress_plot(self):
+        training_stats = get_training_stats()
+        self.loss_plot.set_xdata(training_stats.iterations)
+        self.loss_plot.set_ydata(training_stats.losses)
         self.progress_plot.axes.relim()
         self.progress_plot.axes.autoscale_view()
         try:
@@ -488,9 +524,11 @@ class TrainWidget(QWidget):
 
     def start_training_loop(self):
         self.reset_training_state(keep_stats=True)
+        training_stats = get_training_stats()
 
         self.__training_generator = self.train_cellulus(
             self.raw_selector.value,
+            iteration=training_stats.iteration,
         )
         self.__training_generator.yielded.connect(self.on_yield)
         self.__training_generator.returned.connect(self.on_return)
@@ -528,6 +566,10 @@ class TrainWidget(QWidget):
         if len(layers) > 0:
             self.add_layers(layers)
         if iteration is not None and loss is not None:
+            training_stats = get_training_stats()
+            training_stats.iteration = iteration
+            training_stats.iterations.append(iteration)
+            training_stats.losses.append(loss)
             self.update_progress_plot()
 
     def on_return(self, weights_path: Path):
