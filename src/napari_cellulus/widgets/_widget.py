@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Optional, List
 import time
 
 from magicgui import magic_factory
-from qtpy.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from qtpy.QtWidgets import QPushButton, QWidget
 
 from cellulus.configs.model_config import ModelConfig
 from cellulus.configs.train_config import TrainConfig
@@ -20,7 +20,6 @@ from cellulus.utils.mean_shift import mean_shift_segmentation
 
 
 # local package imports
-from copy import deepcopy
 from ..gui_helpers import layer_choice_widget, MplCanvas
 from ..dataset import NapariDataset
 from ..gp.nodes import NapariImageSource
@@ -38,23 +37,15 @@ import numpy as np
 from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
-from matplotlib.figure import Figure
-from magicgui.widgets import create_widget, Container, Label
-from superqt import QCollapsible
+from magicgui.widgets import Container
 from qtpy.QtWidgets import (
     QWidget,
-    QHBoxLayout,
     QVBoxLayout,
     QPushButton,
-    QFileDialog,
-    QInputDialog,
-    QLabel,
-    QFrame,
 )
 
 # python built in libraries
 from pathlib import Path
-from contextlib import contextmanager
 import dataclasses
 from tqdm import tqdm
 
