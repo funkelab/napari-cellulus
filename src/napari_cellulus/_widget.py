@@ -435,9 +435,6 @@ class TrainWidget(QWidget):
         self.model = None
         self.reset_training_state()
 
-        # No buttons should be enabled
-        self.disable_buttons()
-
     @property
     def training(self) -> bool:
         try:
@@ -454,12 +451,12 @@ class TrainWidget(QWidget):
             assert self.__training_generator is not None
             self.__training_generator.resume()
             self.train_button.setText("Pause!")
-            self.disable_buttons()
+            self.predict_button.setEnabled(True)
         else:
             if self.__training_generator is not None:
                 self.__training_generator.send("stop")
             self.train_button.setText("Train!")
-            self.disable_buttons()
+            self.predict_button.setEnabled(False)
 
     def reset_training_state(self, keep_stats=False):
         if self.__training_generator is not None:
@@ -507,12 +504,6 @@ class TrainWidget(QWidget):
             # For now just avoid drawing. Seems to work as soon as there is data to plot
             pass
 
-    def disable_buttons(
-        self,
-        train: bool = False,
-    ):
-        self.train_button.setEnabled(not train)
-
     def start_training_loop(self):
         self.reset_training_state(keep_stats=True)
 
@@ -523,9 +514,6 @@ class TrainWidget(QWidget):
         self.__training_generator.yielded.connect(self.on_yield)
         self.__training_generator.returned.connect(self.on_return)
         self.__training_generator.start()
-
-        # all buttons are enabled while the training loop is running
-        self.disable_buttons()
 
     def train(self):
         self.training = not self.training
@@ -583,7 +571,6 @@ class TrainWidget(QWidget):
         _optimizer.load_state_dict(optim_state_dict)
         _scheduler.load_state_dict(scheduler_state_dict)
         self.reset_training_state(keep_stats=True)
-        self.disable_buttons()
 
     def add_layers(self, layers):
         viewer_axis_labels = self.viewer.dims.axis_labels
