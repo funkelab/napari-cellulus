@@ -155,6 +155,7 @@ def get_training_state(dataset: Optional[NapariDataset] = None):
     if _train_config is None:
         _train_config = get_train_config()
     if _model is None:
+        # Build model
         _model = get_model(
             in_channels=dataset.get_num_channels(),
             out_channels=dataset.get_num_spatial_dims(),
@@ -167,6 +168,8 @@ def get_training_state(dataset: Optional[NapariDataset] = None):
             num_spatial_dims=dataset.get_num_spatial_dims(),
         ).cuda()
 
+        # Weight initialization
+        # TODO: move weight initialization to funlib.learn.torch
         for name, layer in _model.named_modules():
             if isinstance(layer, torch.nn.modules.conv._ConvNd):
                 torch.nn.init.kaiming_normal_(
