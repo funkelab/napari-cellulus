@@ -21,9 +21,9 @@ from cellulus.utils.mean_shift import mean_shift_segmentation
 
 # local package imports
 from copy import deepcopy
-from .gui_helpers import layer_choice_widget, MplCanvas
-from .dataset import NapariDataset
-from .gp.nodes import NapariImageSource
+from ..gui_helpers import layer_choice_widget, MplCanvas
+from ..dataset import NapariDataset
+from ..gp.nodes import NapariImageSource
 
 # github repo libraries
 import gunpowder as gp
@@ -466,36 +466,15 @@ class TrainWidget(QWidget):
             self.__training_generator.quit()
         self.__training_generator = None
         if not keep_stats:
-            self.iteration = 0
-            self.__iterations = []
-            self.__losses = []
-            self.__val_iterations = []
-            self.__val_losses = []
             if self.loss_plot is None:
                 self.loss_plot = self.progress_plot.axes.plot(
-                    self.__iterations, self.__losses, label="Training Loss"
-                )[0]
-                self.val_plot = self.progress_plot.axes.plot(
-                    self.__val_iterations,
-                    self.__val_losses,
-                    label="Validation Loss",
                 )[0]
                 self.progress_plot.axes.legend()
-                if self.model is not None:
-                    self.progress_plot.axes.set_title(
-                        f"{self.model.name} Training Progress"
-                    )
-                else:
-                    self.progress_plot.axes.set_title(f"Training Progress")
                 self.progress_plot.axes.set_xlabel("Iterations")
                 self.progress_plot.axes.set_ylabel("Loss")
             self.update_progress_plot()
 
     def update_progress_plot(self):
-        self.loss_plot.set_xdata(self.__iterations)
-        self.loss_plot.set_ydata(self.__losses)
-        self.val_plot.set_xdata(self.__val_iterations)
-        self.val_plot.set_ydata(self.__val_losses)
         self.progress_plot.axes.relim()
         self.progress_plot.axes.autoscale_view()
         try:
@@ -512,7 +491,6 @@ class TrainWidget(QWidget):
 
         self.__training_generator = self.train_cellulus(
             self.raw_selector.value,
-            iteration=self.iteration,
         )
         self.__training_generator.yielded.connect(self.on_yield)
         self.__training_generator.returned.connect(self.on_return)
@@ -550,9 +528,6 @@ class TrainWidget(QWidget):
         if len(layers) > 0:
             self.add_layers(layers)
         if iteration is not None and loss is not None:
-            self.iteration = iteration
-            self.__iterations.append(iteration)
-            self.__losses.append(loss)
             self.update_progress_plot()
 
     def on_return(self, weights_path: Path):
