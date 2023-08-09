@@ -265,6 +265,52 @@ class TrainWidget(QWidget):
             self.__segment_widget.raw.reset_choices
         )
 
+        # handle button activations and deactivations
+        # buttons: save, load, (train/pause), segment
+        self.save_button = self.__save_widget.call_button.native
+        self.load_button = self.__load_widget.call_button.native
+        self.segment_button = self.__segment_widget.call_button.native
+
+        self.set_buttons("initial")
+
+    def set_buttons(self, state: str):
+        if state == "training":
+            self.train_button.setText("Pause!")
+            self.save_button.setText("Stop training to save!")
+            self.save_button.setEnabled(False)
+            self.load_button.setText("Stop training to load!")
+            self.load_button.setEnabled(False)
+            self.segment_button.setText("Stop training to segment!")
+            self.segment_button.setEnabled(False)
+        if state == "paused":
+            self.train_button.setText("Train!")
+            self.save_button.setText("Save")
+            self.save_button.setEnabled(True)
+            self.load_button.setText("Load")
+            self.load_button.setEnabled(True)
+            self.segment_button.setText("Segment")
+            self.segment_button.setEnabled(True)
+        if state == "segmenting":
+            self.train_button.setText("Can't train while segmenting!")
+            self.train_button.setEnabled(False)
+            self.save_button.setText("Can't save while segmenting!")
+            self.save_button.setEnabled(False)
+            self.load_button.setText("Can't load while segmenting!")
+            self.load_button.setEnabled(False)
+            self.segment_button.setText("Segmenting...")
+            self.segment_button.setEnabled(False)
+        if state == "initial":
+            self.train_button.setText("Train!")
+            self.train_button.setEnabled(True)
+            self.save_button.setText("No state to Save!")
+            self.save_button.setEnabled(False)
+            self.load_button.setText(
+                "Load data and test data before loading an old model!"
+            )
+            self.load_button.setEnabled(False)
+            self.segment_button.setText("Segment")
+            self.segment_button.setEnabled(True)
+
     @property
     def segment_widget(self):
         @magic_factory(call_button="Segment")
@@ -427,10 +473,15 @@ class TrainWidget(QWidget):
 
     @property
     def save_widget(self):
+        # TODO: block buttons on call. This shouldn't take long, but other operations such
+        # as continuing to train should be blocked until this is done.
+        def on_return():
+            self.set_buttons("paused")
+
         @magic_factory(call_button="Save")
         def save(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
             @thread_worker(
-                connect={"returned": lambda: None},
+                connect={"returned": lambda: on_return()},
                 progress={"total": 0, "desc": "Saving"},
             )
             def async_save(path: Path = Path("checkpoint.pt")) -> None:
@@ -449,15 +500,22 @@ class TrainWidget(QWidget):
             return async_save(path)
 
         if not hasattr(self, "__save_widget"):
-            self.__save_widget = save().native
-        return self.__save_widget
+            self.__save_widget = save()
+            self.__save_widget_native = self.__save_widget.native
+        return self.__save_widget_native
 
     @property
     def load_widget(self):
+        # TODO: block buttons on call. This shouldn't take long, but other operations such
+        # as continuing to train should be blocked until this is done.
+        def on_return():
+            self.update_progress_plot()
+            self.set_buttons("paused")
+
         @magic_factory(call_button="Load")
         def load(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
             @thread_worker(
-                connect={"returned": self.update_progress_plot},
+                connect={"returned": on_return},
                 progress={"total": 0, "desc": "Saving"},
             )
             def async_load(path: Path = Path("checkpoint.pt")) -> None:
@@ -474,8 +532,9 @@ class TrainWidget(QWidget):
             return async_load(path)
 
         if not hasattr(self, "__load_widget"):
-            self.__load_widget = load().native
-        return self.__load_widget
+            self.__load_widget = load()
+            self.__load_widget_native = self.__load_widget.native
+        return self.__load_widget_native
 
     @property
     def training(self) -> bool:
@@ -492,11 +551,11 @@ class TrainWidget(QWidget):
                 self.start_training_loop()
             assert self.__training_generator is not None
             self.__training_generator.resume()
-            self.train_button.setText("Pause!")
+            self.set_buttons("training")
         else:
             if self.__training_generator is not None:
                 self.__training_generator.send("stop")
-            self.train_button.setText("Train!")
+                # button state handled by on_return
 
     def reset_training_state(self, keep_stats=False):
         if self.__training_generator is not None:
@@ -595,6 +654,7 @@ class TrainWidget(QWidget):
         _optimizer.load_state_dict(optim_state_dict)
         _scheduler.load_state_dict(scheduler_state_dict)
         self.reset_training_state(keep_stats=True)
+        self.set_buttons("paused")
 
     def add_layers(self, layers):
         viewer_axis_labels = self.viewer.dims.axis_labels
