@@ -38,6 +38,7 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
 from magicgui.widgets import Container
+from qtpy.QtCore import QEvent, QObject
 from qtpy.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -204,211 +205,6 @@ def get_training_state(dataset: Optional[NapariDataset] = None):
     return (_model, _optimizer, _scheduler)
 
 
-@magic_factory(call_button="Predict")
-def predict(
-    raw: napari.layers.Image,
-    crop_size: list[int] = list([252, 252]),
-    p_salt_pepper: float = 0.1,
-    num_infer_iterations: int = 16,
-) -> FunctionWorker[List[napari.types.LayerDataTuple]]:
-    # TODO: do this better?
-    @thread_worker(
-        connect={"returned": lambda: None},
-        progress={"total": 0, "desc": "Predicting"},
-    )
-    def async_predict(
-        raw: napari.layers.Image,
-        crop_size: list[int],
-        p_salt_pepper: float,
-        num_infer_iterations: int,
-    ) -> List[napari.types.LayerDataTuple]:
-        raw.data = raw.data.astype(np.float32)
-
-        global _model
-        assert (
-            _model is not None
-        ), "You must train a model before running inference"
-        model = _model
-
-        num_spatial_dims = len(raw.data.shape) - 2
-        num_channels = raw.data.shape[1]
-
-        voxel_size = gp.Coordinate((1,) * num_spatial_dims)
-        model.set_infer(
-            p_salt_pepper=p_salt_pepper,
-            num_infer_iterations=num_infer_iterations,
-        )
-
-        # prediction crop size is the size of the scanned tiles to be provided to the model
-        input_shape = gp.Coordinate((1, num_channels, *crop_size))
-
-        output_shape = gp.Coordinate(
-            model(
-                torch.zeros(
-                    (
-                        1,
-                        num_channels,
-                        *crop_size,
-                    ),
-                    dtype=torch.float32,
-                ).cuda()
-            ).shape
-        )
-
-        input_size = gp.Coordinate(input_shape[2:]) * voxel_size
-        output_size = gp.Coordinate(output_shape[2:]) * voxel_size
-
-        context = (input_size - output_size) / 2
-
-        raw_key = gp.ArrayKey("RAW")
-        prediction_key = gp.ArrayKey("PREDICT")
-
-        scan_request = gp.BatchRequest()
-        scan_request.add(raw_key, input_size)
-        scan_request.add(prediction_key, output_size)
-
-        predict = gp.torch.Predict(
-            model,
-            inputs={"raw": raw_key},
-            outputs={0: prediction_key},
-            array_specs={prediction_key: gp.ArraySpec(voxel_size=voxel_size)},
-        )
-
-        pipeline = (
-            NapariImageSource(
-                raw,
-                raw_key,
-                gp.ArraySpec(
-                    gp.Roi((0,) * num_spatial_dims, raw.data.shape[2:]),
-                    voxel_size=voxel_size,
-                ),
-            )
-            + gp.Pad(raw_key, context)
-            + predict
-            + gp.Scan(scan_request)
-        )
-
-        # request to pipeline for ROI of whole image/volume
-        request = gp.BatchRequest()
-        request.add(raw_key, raw.data.shape[2:])
-        request.add(prediction_key, raw.data.shape[2:])
-        with gp.build(pipeline):
-            batch = pipeline.request_batch(request)
-
-        prediction = batch.arrays[prediction_key].data
-        colormaps = ["red", "green", "blue"]
-        prediction = [
-            (
-                prediction[:, i : i + 1, ...],
-                {
-                    "name": "offset-" + "zyx"[num_channels - i]
-                    if i < num_channels
-                    else "std",
-                    "colormap": colormaps[num_channels - i]
-                    if i < num_channels
-                    else "gray",
-                    "blending": "additive",
-                },
-                "image",
-            )
-            for i in range(num_channels + 1)
-        ]
-        return prediction
-
-    return async_predict(
-        raw,
-        crop_size=crop_size,
-        p_salt_pepper=p_salt_pepper,
-        num_infer_iterations=num_infer_iterations,
-    )
-
-
-@magic_factory(call_button="Segment")
-def segment(
-    offset_layers: list[napari.layers.Image],
-    bandwidth: int = 7,
-    min_size: int = 10,
-) -> FunctionWorker[napari.types.LayerDataTuple]:
-    @thread_worker(
-        connect={"returned": lambda: None},
-        progress={"total": 0, "desc": "Segmenting"},
-    )
-    def async_segment(
-        offset_layers: list[napari.layers.Image],
-        bandwidth: int = 7,
-        min_size: int = 10,
-    ) -> napari.types.LayerDataTuple:
-        labels = np.zeros_like(offset_layers[0].data, dtype=np.uint64)
-        num_spatial_dims = len(offset_layers[0].data.shape) - 2
-
-        for sample in tqdm(range(offset_layers[0].data.shape[0])):
-            embeddings = np.concatenate(
-                [layer.data[sample] for layer in offset_layers]
-            )
-            embeddings_std = embeddings[-1, ...]
-            embeddings_mean = embeddings[np.newaxis, :num_spatial_dims, ...]
-            segmentation = mean_shift_segmentation(
-                embeddings_mean,
-                embeddings_std,
-                bandwidth=bandwidth,
-                min_size=min_size,
-            )
-            labels[
-                sample,
-                0,
-                ...,
-            ] = segmentation
-        return (labels, {"name": "Segmentation"}, "labels")
-
-    return async_segment(
-        offset_layers,
-        bandwidth,
-        min_size,
-    )
-
-
-@magic_factory(call_button="Save")
-def save(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
-    @thread_worker(
-        connect={"returned": lambda: None},
-        progress={"total": 0, "desc": "Saving"},
-    )
-    def async_save(path: Path = Path("checkpoint.pt")) -> None:
-        model, optimizer, scheduler = get_training_state()
-        training_stats = get_training_stats()
-        torch.save(
-            (
-                model.state_dict(),
-                optimizer.state_dict(),
-                scheduler.state_dict(),
-                training_stats,
-            ),
-            path,
-        )
-
-    return async_save(path)
-
-
-@magic_factory(call_button="Load")
-def load(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
-    @thread_worker(
-        connect={"returned": lambda: None},
-        progress={"total": 0, "desc": "Saving"},
-    )
-    def async_load(path: Path = Path("checkpoint.pt")) -> None:
-        model, optimizer, scheduler = get_training_state()
-        training_stats = get_training_stats()
-        state_dicts = torch.load(
-            path,
-        )
-        model.load_state_dict(state_dicts[0])
-        optimizer.load_state_dict(state_dicts[1])
-        scheduler.load_state_dict(state_dicts[2])
-        training_stats.load(state_dicts[3])
-
-    return async_load(path)
-
-
 class TrainWidget(QWidget):
     def __init__(self, napari_viewer):
         # basic initialization
@@ -420,6 +216,10 @@ class TrainWidget(QWidget):
 
         # Widget layout
         layout = QVBoxLayout()
+
+        # add save and load widgets
+        layout.addWidget(self.save_widget)
+        layout.addWidget(self.load_widget)
 
         # add loss/iterations widget
         self.progress_plot = MplCanvas(self, width=5, height=3, dpi=100)
@@ -445,9 +245,9 @@ class TrainWidget(QWidget):
         self.train_button = QPushButton("Train!", self)
         self.train_button.clicked.connect(self.train)
         layout.addWidget(self.train_button)
-        self.predict_button = QPushButton("Predict!", self)
-        self.predict_button.clicked.connect(self.predict)
-        layout.addWidget(self.predict_button)
+
+        # Add segment widget
+        layout.addWidget(self.segment_widget)
 
         # activate layout
         self.setLayout(layout)
@@ -455,6 +255,227 @@ class TrainWidget(QWidget):
         # Widget state
         self.model = None
         self.reset_training_state()
+
+        # TODO: Can we do this better?
+        # connect napari events
+        self.viewer.layers.events.inserted.connect(
+            self.__segment_widget.raw.reset_choices
+        )
+        self.viewer.layers.events.removed.connect(
+            self.__segment_widget.raw.reset_choices
+        )
+
+    @property
+    def segment_widget(self):
+        @magic_factory(call_button="Segment")
+        def segment(
+            raw: napari.layers.Image,
+            crop_size: list[int] = list([252, 252]),
+            p_salt_pepper: float = 0.1,
+            num_infer_iterations: int = 16,
+            bandwidth: int = 7,
+            min_size: int = 10,
+        ) -> FunctionWorker[List[napari.types.LayerDataTuple]]:
+            # TODO: do this better?
+            @thread_worker(
+                connect={"returned": lambda: None},
+                progress={"total": 0, "desc": "Segmenting"},
+            )
+            def async_segment(
+                raw: napari.layers.Image,
+                crop_size: list[int],
+                p_salt_pepper: float,
+                num_infer_iterations: int,
+                bandwidth: int,
+                min_size: int,
+            ) -> List[napari.types.LayerDataTuple]:
+                raw.data = raw.data.astype(np.float32)
+
+                global _model
+                assert (
+                    _model is not None
+                ), "You must train a model before running inference"
+                model = _model
+
+                num_spatial_dims = len(raw.data.shape) - 2
+                num_channels = raw.data.shape[1]
+
+                voxel_size = gp.Coordinate((1,) * num_spatial_dims)
+                model.set_infer(
+                    p_salt_pepper=p_salt_pepper,
+                    num_infer_iterations=num_infer_iterations,
+                )
+
+                # prediction crop size is the size of the scanned tiles to be provided to the model
+                input_shape = gp.Coordinate((1, num_channels, *crop_size))
+
+                output_shape = gp.Coordinate(
+                    model(
+                        torch.zeros(
+                            (
+                                1,
+                                num_channels,
+                                *crop_size,
+                            ),
+                            dtype=torch.float32,
+                        ).cuda()
+                    ).shape
+                )
+
+                input_size = gp.Coordinate(input_shape[2:]) * voxel_size
+                output_size = gp.Coordinate(output_shape[2:]) * voxel_size
+
+                context = (input_size - output_size) / 2
+
+                raw_key = gp.ArrayKey("RAW")
+                prediction_key = gp.ArrayKey("PREDICT")
+
+                scan_request = gp.BatchRequest()
+                scan_request.add(raw_key, input_size)
+                scan_request.add(prediction_key, output_size)
+
+                predict = gp.torch.Predict(
+                    model,
+                    inputs={"raw": raw_key},
+                    outputs={0: prediction_key},
+                    array_specs={
+                        prediction_key: gp.ArraySpec(voxel_size=voxel_size)
+                    },
+                )
+
+                pipeline = (
+                    NapariImageSource(
+                        raw,
+                        raw_key,
+                        gp.ArraySpec(
+                            gp.Roi(
+                                (0,) * num_spatial_dims, raw.data.shape[2:]
+                            ),
+                            voxel_size=voxel_size,
+                        ),
+                    )
+                    + gp.Pad(raw_key, context)
+                    + predict
+                    + gp.Scan(scan_request)
+                )
+
+                # request to pipeline for ROI of whole image/volume
+                request = gp.BatchRequest()
+                request.add(raw_key, raw.data.shape[2:])
+                request.add(prediction_key, raw.data.shape[2:])
+                with gp.build(pipeline):
+                    batch = pipeline.request_batch(request)
+
+                prediction = batch.arrays[prediction_key].data
+                colormaps = ["red", "green", "blue"]
+                prediction_layers = [
+                    (
+                        prediction[:, i : i + 1, ...].copy(),
+                        {
+                            "name": "offset-" + "zyx"[num_channels - i]
+                            if i < num_channels
+                            else "std",
+                            "colormap": colormaps[num_channels - i]
+                            if i < num_channels
+                            else "gray",
+                            "blending": "additive",
+                        },
+                        "image",
+                    )
+                    for i in range(num_channels + 1)
+                ]
+
+                labels = np.zeros_like(
+                    prediction[:, 0:1, ...].data, dtype=np.uint64
+                )
+                num_spatial_dims = len(prediction.data.shape) - 2
+
+                for sample in tqdm(range(prediction.data.shape[0])):
+                    embeddings = prediction[sample]
+                    embeddings_std = embeddings[-1, ...]
+                    embeddings_mean = embeddings[
+                        np.newaxis, :num_spatial_dims, ...
+                    ]
+                    segmentation = mean_shift_segmentation(
+                        embeddings_mean,
+                        embeddings_std,
+                        bandwidth=bandwidth,
+                        min_size=min_size,
+                    )
+                    labels[
+                        sample,
+                        0,
+                        ...,
+                    ] = segmentation
+                return prediction_layers + [
+                    (labels, {"name": "Segmentation"}, "labels")
+                ]
+
+            return async_segment(
+                raw,
+                crop_size=crop_size,
+                p_salt_pepper=p_salt_pepper,
+                num_infer_iterations=num_infer_iterations,
+                bandwidth=bandwidth,
+                min_size=min_size,
+            )
+
+        if not hasattr(self, "__segment_widget"):
+            self.__segment_widget = segment()
+            self.__segment_widget_native = self.__segment_widget.native
+        return self.__segment_widget_native
+
+    @property
+    def save_widget(self):
+        @magic_factory(call_button="Save")
+        def save(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
+            @thread_worker(
+                connect={"returned": lambda: None},
+                progress={"total": 0, "desc": "Saving"},
+            )
+            def async_save(path: Path = Path("checkpoint.pt")) -> None:
+                model, optimizer, scheduler = get_training_state()
+                training_stats = get_training_stats()
+                torch.save(
+                    (
+                        model.state_dict(),
+                        optimizer.state_dict(),
+                        scheduler.state_dict(),
+                        training_stats,
+                    ),
+                    path,
+                )
+
+            return async_save(path)
+
+        if not hasattr(self, "__save_widget"):
+            self.__save_widget = save().native
+        return self.__save_widget
+
+    @property
+    def load_widget(self):
+        @magic_factory(call_button="Load")
+        def load(path: Path = Path("checkpoint.pt")) -> FunctionWorker[None]:
+            @thread_worker(
+                connect={"returned": self.update_progress_plot},
+                progress={"total": 0, "desc": "Saving"},
+            )
+            def async_load(path: Path = Path("checkpoint.pt")) -> None:
+                model, optimizer, scheduler = get_training_state()
+                training_stats = get_training_stats()
+                state_dicts = torch.load(
+                    path,
+                )
+                model.load_state_dict(state_dicts[0])
+                optimizer.load_state_dict(state_dicts[1])
+                scheduler.load_state_dict(state_dicts[2])
+                training_stats.load(state_dicts[3])
+
+            return async_load(path)
+
+        if not hasattr(self, "__load_widget"):
+            self.__load_widget = load().native
+        return self.__load_widget
 
     @property
     def training(self) -> bool:
@@ -472,12 +493,10 @@ class TrainWidget(QWidget):
             assert self.__training_generator is not None
             self.__training_generator.resume()
             self.train_button.setText("Pause!")
-            self.predict_button.setEnabled(True)
         else:
             if self.__training_generator is not None:
                 self.__training_generator.send("stop")
             self.train_button.setText("Train!")
-            self.predict_button.setEnabled(False)
 
     def reset_training_state(self, keep_stats=False):
         if self.__training_generator is not None:
@@ -527,12 +546,6 @@ class TrainWidget(QWidget):
 
     def train(self):
         self.training = not self.training
-
-    def predict(self):
-        if self.training:
-            self.__training_generator.send("predict")
-        else:
-            raise NotImplementedError()
 
     def snapshot(self):
         self.__training_generator.send("snapshot")
@@ -740,45 +753,7 @@ class TrainWidget(QWidget):
                     iteration,
                     train_loss,
                 )
-            elif mode == "predict":
-                prediction = model(torch.from_numpy(raw.data).cuda().float())
 
-                # Generate affinities and keep the offsets as metadata
-                prediction_layers = [
-                    (
-                        prediction.detach().cpu().numpy(),
-                        {
-                            "name": "Cellulus(online)",
-                            "axes": (
-                                "sample",
-                                "channel",
-                                "y",
-                                "x",
-                            ),
-                        },
-                        "image",
-                    ),
-                ]
-                mode = yield (iteration, train_loss, *prediction_layers)
-
-            # if iteration % train_config.save_model_every == 0:
-            #     is_lowest = train_loss < lowest_loss
-            #     lowest_loss = min(train_loss, lowest_loss)
-            #     state = {
-            #         "iteration": iteration,
-            #         "lowest_loss": lowest_loss,
-            #         "model_state_dict": model.state_dict(),
-            #         "optim_state_dict": optimizer.state_dict(),
-            #         "logger_data": logger.data,
-            #     }
-            #     save_model(state, iteration, is_lowest)
-
-            # if iteration % train_config.save_snapshot_every == 0:
-            #     save_snapshot(
-            #         batch,
-            #         prediction,
-            #         iteration,
-            #     )
             elif mode == "stop":
                 checkpoint = Path(f"/tmp/checkpoints/{iteration}.pt")
                 if not checkpoint.parent.exists():

@@ -5,8 +5,6 @@ from .widgets._widget import (
     train_config_widget,
     TrainWidget,
     model_config_widget,
-    predict,
-    segment,
 )
 
 __all__ = (
@@ -14,6 +12,4 @@ __all__ = (
     "train_config_widget",
     "model_config_widget",
     "TrainWidget",
-    "predict",
-    "segment",
 )
