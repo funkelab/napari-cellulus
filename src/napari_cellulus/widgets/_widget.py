@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Optional, List
 import time
 
 from magicgui import magic_factory
+from magicgui.widgets import Container
 from qtpy.QtWidgets import QPushButton, QWidget
 
 from cellulus.configs.model_config import ModelConfig
@@ -44,6 +45,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QPushButton,
 )
+from superqt import QCollapsible
 
 # python built in libraries
 from pathlib import Path
@@ -217,10 +219,6 @@ class TrainWidget(QWidget):
         # Widget layout
         layout = QVBoxLayout()
 
-        # add save and load widgets
-        layout.addWidget(self.save_widget)
-        layout.addWidget(self.load_widget)
-
         # add loss/iterations widget
         self.progress_plot = MplCanvas(self, width=5, height=3, dpi=100)
         toolbar = NavigationToolbar(self.progress_plot, self)
@@ -246,8 +244,17 @@ class TrainWidget(QWidget):
         self.train_button.clicked.connect(self.train)
         layout.addWidget(self.train_button)
 
+        # add save and load widgets
+        collapsable_save_load_widget = QCollapsible("Save/Load", self)
+        collapsable_save_load_widget.addWidget(self.save_widget.native)
+        collapsable_save_load_widget.addWidget(self.load_widget.native)
+
+        layout.addWidget(collapsable_save_load_widget)
+
         # Add segment widget
-        layout.addWidget(self.segment_widget)
+        collapsable_segment_widget = QCollapsible("Segment", self)
+        collapsable_segment_widget.addWidget(self.segment_widget)
+        layout.addWidget(collapsable_segment_widget)
 
         # activate layout
         self.setLayout(layout)
@@ -501,8 +508,8 @@ class TrainWidget(QWidget):
 
         if not hasattr(self, "__save_widget"):
             self.__save_widget = save()
-            self.__save_widget_native = self.__save_widget.native
-        return self.__save_widget_native
+
+        return self.__save_widget
 
     @property
     def load_widget(self):
@@ -533,8 +540,8 @@ class TrainWidget(QWidget):
 
         if not hasattr(self, "__load_widget"):
             self.__load_widget = load()
-            self.__load_widget_native = self.__load_widget.native
-        return self.__load_widget_native
+
+        return self.__load_widget
 
     @property
     def training(self) -> bool:
