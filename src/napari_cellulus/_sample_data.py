@@ -11,7 +11,7 @@ def tissuenet_sample():
     y = y.transpose(0, 3, 1, 2).astype(np.uint8)
     return [
         (
-            x[100:105],
+            x,
             {
                 "name": "Raw",
                 "metadata": {"axes": ["s", "c", "y", "x"]},
@@ -19,7 +19,7 @@ def tissuenet_sample():
             "image",
         ),
         (
-            y[100:105],
+            y,
             {
                 "name": "Labels",
                 "metadata": {"axes": ["s", "c", "y", "x"]},
