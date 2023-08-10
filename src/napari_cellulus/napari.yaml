@@ -17,7 +17,7 @@ contributions:
   sample_data:
     - command: napari-cellulus.tissuenet_sample
       display_name: Cellulus
-      key: unique_id.1
+      key: tissuenet_sample
   widgets:
     - command: napari-cellulus.train_config
       display_name: Train Config Widget
