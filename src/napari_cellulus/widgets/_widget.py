@@ -42,7 +42,7 @@ from superqt import QCollapsible
 from tqdm import tqdm
 
 from ..dataset import NapariDataset
-from ..gp.nodes import NapariImageSource
+from ..gp.nodes.napari_image_source import NapariImageSource
 
 # local package imports
 from ..gui_helpers import MplCanvas, layer_choice_widget
@@ -269,6 +269,9 @@ class TrainWidget(QWidget):
         self.save_button = self.__save_widget.call_button.native
         self.load_button = self.__load_widget.call_button.native
         self.segment_button = self.__segment_widget.call_button.native
+        self.segment_button.clicked.connect(
+            lambda: self.set_buttons("segmenting")
+        )
 
         self.set_buttons("initial")
 
