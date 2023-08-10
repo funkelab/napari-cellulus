@@ -6,54 +6,46 @@ see: https://napari.org/stable/plugins/guides.html?#widgets
 
 Replace code below according to your needs.
 """
-from typing import TYPE_CHECKING, Optional, List
-import time
+import dataclasses
+import contextlib
 
-from magicgui import magic_factory
-from magicgui.widgets import Container
-from qtpy.QtWidgets import QPushButton, QWidget
-
-from cellulus.configs.model_config import ModelConfig
-from cellulus.configs.train_config import TrainConfig
-from cellulus.models import get_model
-from cellulus.criterions import get_loss
-from cellulus.utils.mean_shift import mean_shift_segmentation
-
-
-# local package imports
-from ..gui_helpers import layer_choice_widget, MplCanvas
-from ..dataset import NapariDataset
-from ..gp.nodes import NapariImageSource
+# python built in libraries
+from pathlib import Path
+from typing import List, Optional
 
 # github repo libraries
 import gunpowder as gp
 
 # pip installed libraries
 import napari
-from napari.qt.threading import FunctionWorker, thread_worker
-import torch
 import numpy as np
+import torch
+from cellulus.configs.model_config import ModelConfig
+from cellulus.configs.train_config import TrainConfig
+from cellulus.criterions import get_loss
+from cellulus.models import get_model
+from cellulus.utils.mean_shift import mean_shift_segmentation
+from magicgui import magic_factory
+from magicgui.widgets import Container
 
 # widget stuff
 from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
-from magicgui.widgets import Container
-from qtpy.QtCore import QEvent, QObject
+from napari.qt.threading import FunctionWorker, thread_worker
 from qtpy.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
     QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 from superqt import QCollapsible
-
-# python built in libraries
-from pathlib import Path
-import dataclasses
 from tqdm import tqdm
 
-if TYPE_CHECKING:
-    import napari
+from ..dataset import NapariDataset
+from ..gp.nodes import NapariImageSource
+
+# local package imports
+from ..gui_helpers import MplCanvas, layer_choice_widget
 
 
 @dataclasses.dataclass
@@ -64,8 +56,8 @@ class TrainingStats:
 
     def reset(self):
         self.iteration = 0
-        self.losses = list([])
-        self.iterations = list([])
+        self.losses = []
+        self.iterations = []
 
     def load(self, other):
         self.iteration = other.iteration
@@ -102,7 +94,7 @@ def get_train_config(**kwargs):
 
 @magic_factory(call_button="Save")
 def train_config_widget(
-    crop_size: list[int] = list([256, 256]),
+    crop_size: list[int] = [256, 256],
     batch_size: int = 8,
     max_iterations: int = 100_000,
     initial_learning_rate: float = 4e-5,
@@ -150,7 +142,7 @@ def model_config_widget(
     num_fmaps: int = 256,
     fmap_inc_factor: int = 3,
     features_in_last_layer: int = 64,
-    downsampling_factors: list[list[int]] = list([list([2, 2])]),
+    downsampling_factors: list[list[int]] = [[2, 2]],
 ):
     get_model_config(
         num_fmaps=num_fmaps,
@@ -187,7 +179,7 @@ def get_training_state(dataset: Optional[NapariDataset] = None):
 
         # Weight initialization
         # TODO: move weight initialization to funlib.learn.torch
-        for name, layer in _model.named_modules():
+        for _name, layer in _model.named_modules():
             if isinstance(layer, torch.nn.modules.conv._ConvNd):
                 torch.nn.init.kaiming_normal_(
                     layer.weight, nonlinearity="relu"
@@ -323,7 +315,7 @@ class TrainWidget(QWidget):
         @magic_factory(call_button="Segment")
         def segment(
             raw: napari.layers.Image,
-            crop_size: list[int] = list([252, 252]),
+            crop_size: list[int] = [252, 252],
             p_salt_pepper: float = 0.1,
             num_infer_iterations: int = 16,
             bandwidth: int = 7,
@@ -578,7 +570,7 @@ class TrainWidget(QWidget):
                     label="Training Loss",
                 )[0]
                 self.progress_plot.axes.legend()
-                self.progress_plot.axes.set_title(f"Training Progress")
+                self.progress_plot.axes.set_title("Training Progress")
                 self.progress_plot.axes.set_xlabel("Iterations")
                 self.progress_plot.axes.set_ylabel("Loss")
             self.update_progress_plot()
@@ -589,14 +581,12 @@ class TrainWidget(QWidget):
         self.loss_plot.set_ydata(training_stats.losses)
         self.progress_plot.axes.relim()
         self.progress_plot.axes.autoscale_view()
-        try:
-            self.progress_plot.draw()
-        except np.linalg.LinAlgError as e:
+        with contextlib.suppress(np.linalg.LinAlgError):
             # matplotlib seems to throw a LinAlgError on draw sometimes. Not sure
             # why yet. Seems to only happen when initializing models without any
             # layers loaded. No idea whats going wrong.
             # For now just avoid drawing. Seems to work as soon as there is data to plot
-            pass
+            self.progress_plot.draw()
 
     def start_training_loop(self):
         self.reset_training_state(keep_stats=True)
@@ -694,7 +684,7 @@ class TrainWidget(QWidget):
             assert batch_dim in [
                 -1,
                 0,
-            ], f"Batch dim must be first"
+            ], "Batch dim must be first"
             if batch_dim == 0:
                 data = data[0]
 

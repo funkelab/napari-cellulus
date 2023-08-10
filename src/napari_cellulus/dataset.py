@@ -1,13 +1,11 @@
-from .gp.nodes.napari_image_source import NapariImageSource
-
 import math
 from typing import Tuple
 
 import gunpowder as gp
+from napari.layers import Image
 from torch.utils.data import IterableDataset
 
-import numpy as np
-from napari.layers import Image
+from .gp.nodes.napari_image_source import NapariImageSource
 
 
 class NapariDataset(IterableDataset):  # type: ignore

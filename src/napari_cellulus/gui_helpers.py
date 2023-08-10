@@ -1,25 +1,25 @@
-from magicgui.widgets import create_widget, FunctionGui
-
+from magicgui.widgets import FunctionGui, create_widget
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg,
+)
+from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
 from matplotlib.figure import Figure
-
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtWidgets
 
 
 class MplCanvas(FigureCanvasQTAgg):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         fig = Figure(figsize=(width, height), dpi=dpi)
         self.axes = fig.add_subplot(111)
-        super(MplCanvas, self).__init__(fig)
+        super().__init__(fig)
         fig.set_tight_layout(True)
 
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
-        super(MainWindow, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         sc = MplCanvas(self, width=5, height=4, dpi=100)
 

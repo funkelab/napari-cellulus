@@ -1,6 +1,6 @@
-import numpy as np
-
 from pathlib import Path
+
+import numpy as np
 
 TISSUENET_SAMPLE = Path(__file__).parent / "sample_data/tissuenet-sample.npy"
 

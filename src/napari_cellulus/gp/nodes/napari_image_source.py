@@ -1,10 +1,9 @@
-from napari.layers import Image
+from typing import Optional
 
 import gunpowder as gp
-from gunpowder.profiling import Timing
 from gunpowder.array_spec import ArraySpec
-
-from typing import Optional
+from gunpowder.profiling import Timing
+from napari.layers import Image
 
 
 class NapariImageSource(gp.BatchProvider):
