@@ -38,6 +38,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qtpy.QtGui import QDesktopServices
+from qtpy.QtCore import QUrl
 from superqt import QCollapsible
 from tqdm import tqdm
 
@@ -247,6 +249,17 @@ class TrainWidget(QWidget):
         collapsable_segment_widget = QCollapsible("Segment", self)
         collapsable_segment_widget.addWidget(self.segment_widget)
         layout.addWidget(collapsable_segment_widget)
+
+        # add feedback button
+        self.feedback_button = QPushButton("Feedback!", self)
+        self.feedback_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(
+                    "https://github.com/funkelab/napari-cellulus/issues/new/choose"
+                )
+            )
+        )
+        layout.addWidget(self.feedback_button)
 
         # activate layout
         self.setLayout(layout)
