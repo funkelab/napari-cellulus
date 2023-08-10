@@ -278,6 +278,7 @@ class TrainWidget(QWidget):
     def set_buttons(self, state: str):
         if state == "training":
             self.train_button.setText("Pause!")
+            self.train_button.setEnabled(True)
             self.save_button.setText("Stop training to save!")
             self.save_button.setEnabled(False)
             self.load_button.setText("Stop training to load!")
@@ -286,6 +287,7 @@ class TrainWidget(QWidget):
             self.segment_button.setEnabled(False)
         if state == "paused":
             self.train_button.setText("Train!")
+            self.train_button.setEnabled(True)
             self.save_button.setText("Save")
             self.save_button.setEnabled(True)
             self.load_button.setText("Load")
@@ -326,7 +328,7 @@ class TrainWidget(QWidget):
         ) -> FunctionWorker[List[napari.types.LayerDataTuple]]:
             # TODO: do this better?
             @thread_worker(
-                connect={"returned": lambda: None},
+                connect={"returned": lambda: self.set_buttons("paused")},
                 progress={"total": 0, "desc": "Segmenting"},
             )
             def async_segment(
