@@ -1,10 +1,10 @@
 # napari-cellulus
 
-[![License MIT](https://img.shields.io/pypi/l/napari-cellulus.svg?color=green)](https://github.com/pattonw/napari-cellulus/raw/main/LICENSE)
+[![License MIT](https://img.shields.io/pypi/l/napari-cellulus.svg?color=green)](https://github.com/funkelab/napari-cellulus/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/napari-cellulus.svg?color=green)](https://pypi.org/project/napari-cellulus)
 [![Python Version](https://img.shields.io/pypi/pyversions/napari-cellulus.svg?color=green)](https://python.org)
-[![tests](https://github.com/pattonw/napari-cellulus/workflows/tests/badge.svg)](https://github.com/pattonw/napari-cellulus/actions)
-[![codecov](https://codecov.io/gh/pattonw/napari-cellulus/branch/main/graph/badge.svg)](https://codecov.io/gh/pattonw/napari-cellulus)
+[![tests](https://github.com/funkelab/napari-cellulus/workflows/tests/badge.svg)](https://github.com/funkelab/napari-cellulus/actions)
+[![codecov](https://codecov.io/gh/funkelab/napari-cellulus/branch/main/graph/badge.svg)](https://codecov.io/gh/funkelab/napari-cellulus)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-cellulus)](https://napari-hub.org/plugins/napari-cellulus)
 
 A Napari plugin for Cellulus: Unsupervised Learning of Object-Centric Embeddings for Cell Instance Segmentation in Microscopy Images
@@ -31,7 +31,7 @@ You can install `napari-cellulus` via [pip]:
 
 To install latest development version :
 
-    pip install git+https://github.com/pattonw/napari-cellulus.git
+    pip install git+https://github.com/funkelab/napari-cellulus.git
 
 
 ## Contributing
@@ -59,7 +59,7 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [Mozilla Public License 2.0]: https://www.mozilla.org/media/MPL/2.0/index.txt
 [cookiecutter-napari-plugin]: https://github.com/napari/cookiecutter-napari-plugin
 
-[file an issue]: https://github.com/pattonw/napari-cellulus/issues
+[file an issue]: https://github.com/funkelab/napari-cellulus/issues
 
 [napari]: https://github.com/napari/napari
 [tox]: https://tox.readthedocs.io/en/latest/
