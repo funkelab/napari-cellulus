@@ -1,5 +1,5 @@
 import math
-from typing import Tuple
+from typing import Tuple, List
 
 import gunpowder as gp
 from napari.layers import Image
@@ -7,11 +7,14 @@ from torch.utils.data import IterableDataset
 
 from .gp.nodes.napari_image_source import NapariImageSource
 
+from cellulus.datasets import DatasetMetaData
+
 
 class NapariDataset(IterableDataset):  # type: ignore
     def __init__(
         self,
         layer: Image,
+        axis_names: List[str],
         crop_size: Tuple[int, ...],
         control_point_spacing: int,
         control_point_jitter: float,
@@ -20,15 +23,18 @@ class NapariDataset(IterableDataset):  # type: ignore
 
         Args:
 
-            data:
+            layer:
 
-                A numpy array to use.
+                The napari layer to use.
                 The data should have shape `(s, c, [t,] [z,] y, x)`, where
                 `s` = # of samples, `c` = # of channels, `t` = # of frames, and
                 `z`/`y`/`x` are spatial extents. The dataset should have an
                 `"axis_names"` attribute that contains the names of the used
                 axes, e.g., `["s", "c", "y", "x"]` for a 2D dataset.
 
+            axis_names:
+
+                The names of the axes in the napari layer.
 
             crop_size:
 
@@ -51,6 +57,7 @@ class NapariDataset(IterableDataset):  # type: ignore
         """
 
         self.layer = layer
+        self.axis_names = axis_names
         self.crop_size = crop_size
         self.control_point_spacing = control_point_spacing
         self.control_point_jitter = control_point_jitter
@@ -58,8 +65,8 @@ class NapariDataset(IterableDataset):  # type: ignore
 
         assert len(crop_size) == self.num_spatial_dims, (
             f'"crop_size" must have the same dimension as the '
-            f'spatial(temporal) dimensions of the "{self.dataset_config.dataset_name}" '
-            f"dataset which is {self.num_spatial_dims}, but it is {crop_size}"
+            f'spatial(temporal) dimensions of the "{self.layer.name}"'
+            f"layer which is {self.num_spatial_dims}, but it is {crop_size}"
         )
 
         self.__setup_pipeline()
@@ -104,13 +111,15 @@ class NapariDataset(IterableDataset):  # type: ignore
                 yield sample[self.raw].data[0]
 
     def __read_meta_data(self):
-        self.num_dims = len(self.layer.data.shape)
-        self.num_spatial_dims = self.num_dims - 2
-        self.num_channels = self.layer.data.shape[1]
-        self.num_samples = self.layer.data.shape[0]
-        self.sample_dim = 0
-        self.channel_dim = 1
-        self.time_dim = None
+        meta_data = DatasetMetaData(self.layer.data.shape, self.axis_names)
+
+        self.num_dims = meta_data.num_dims
+        self.num_spatial_dims = meta_data.num_spatial_dims
+        self.num_channels = meta_data.num_channels
+        self.num_samples = meta_data.num_samples
+        self.sample_dim = meta_data.sample_dim
+        self.channel_dim = meta_data.channel_dim
+        self.time_dim = meta_data.time_dim
 
     def get_num_channels(self):
         return self.num_channels

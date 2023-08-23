@@ -37,6 +37,9 @@ from qtpy.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QWidget,
+    QCheckBox,
+    QHBoxLayout,
+    QGroupBox,
 )
 from qtpy.QtGui import QDesktopServices
 from qtpy.QtCore import QUrl
@@ -232,6 +235,25 @@ class TrainWidget(QWidget):
             name="raw",
         )
         layout.addWidget(self.raw_selector.native)
+
+        self.s_checkbox = QCheckBox('s')
+        self.c_checkbox = QCheckBox('c')
+        self.t_checkbox = QCheckBox('t')
+        self.z_checkbox = QCheckBox('z')
+        self.y_checkbox = QCheckBox('y')
+        self.x_checkbox = QCheckBox('x')
+
+        axis_layout = QHBoxLayout()
+        axis_layout.addWidget(self.s_checkbox)
+        axis_layout.addWidget(self.c_checkbox)
+        axis_layout.addWidget(self.t_checkbox)
+        axis_layout.addWidget(self.z_checkbox)
+        axis_layout.addWidget(self.y_checkbox)
+        axis_layout.addWidget(self.x_checkbox)
+
+        self.axis_selector = QGroupBox("Axis Names:")
+        self.axis_selector.setLayout(axis_layout)
+        layout.addWidget(self.axis_selector)
 
         # add buttons
         self.train_button = QPushButton("Train!", self)
@@ -606,12 +628,22 @@ class TrainWidget(QWidget):
             # For now just avoid drawing. Seems to work as soon as there is data to plot
             self.progress_plot.draw()
 
+    def get_selected_axes(self):
+        names = []
+        for name, checkbox in zip("sctzyx", [self.s_checkbox, self.c_checkbox, self.t_checkbox,
+                         self.z_checkbox, self.y_checkbox, self.x_checkbox]):
+            if checkbox.isChecked():
+                names.append(name)
+        return names
+
+
     def start_training_loop(self):
         self.reset_training_state(keep_stats=True)
         training_stats = get_training_stats()
 
         self.__training_generator = self.train_cellulus(
             self.raw_selector.value,
+            self.get_selected_axes(),
             iteration=training_stats.iteration,
         )
         self.__training_generator.yielded.connect(self.on_yield)
@@ -755,12 +787,14 @@ class TrainWidget(QWidget):
     def train_cellulus(
         self,
         raw,
+        axis_names,
         iteration=0,
     ):
         train_config = get_train_config()
         # Turn layer into dataset:
         train_dataset = NapariDataset(
             raw,
+            axis_names,
             crop_size=train_config.crop_size,
             control_point_spacing=train_config.control_point_spacing,
             control_point_jitter=train_config.control_point_jitter,
