@@ -6,8 +6,8 @@ see: https://napari.org/stable/plugins/guides.html?#widgets
 
 Replace code below according to your needs.
 """
-import dataclasses
 import contextlib
+import dataclasses
 
 # python built in libraries
 from pathlib import Path
@@ -33,16 +33,16 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
 from napari.qt.threading import FunctionWorker, thread_worker
+from qtpy.QtCore import QUrl
+from qtpy.QtGui import QDesktopServices
 from qtpy.QtWidgets import (
+    QCheckBox,
+    QGroupBox,
+    QHBoxLayout,
     QPushButton,
     QVBoxLayout,
     QWidget,
-    QCheckBox,
-    QHBoxLayout,
-    QGroupBox,
 )
-from qtpy.QtGui import QDesktopServices
-from qtpy.QtCore import QUrl
 from superqt import QCollapsible
 from tqdm import tqdm
 
@@ -236,12 +236,12 @@ class TrainWidget(QWidget):
         )
         layout.addWidget(self.raw_selector.native)
 
-        self.s_checkbox = QCheckBox('s')
-        self.c_checkbox = QCheckBox('c')
-        self.t_checkbox = QCheckBox('t')
-        self.z_checkbox = QCheckBox('z')
-        self.y_checkbox = QCheckBox('y')
-        self.x_checkbox = QCheckBox('x')
+        self.s_checkbox = QCheckBox("s")
+        self.c_checkbox = QCheckBox("c")
+        self.t_checkbox = QCheckBox("t")
+        self.z_checkbox = QCheckBox("z")
+        self.y_checkbox = QCheckBox("y")
+        self.x_checkbox = QCheckBox("x")
 
         axis_layout = QHBoxLayout()
         axis_layout.addWidget(self.s_checkbox)
@@ -630,12 +630,20 @@ class TrainWidget(QWidget):
 
     def get_selected_axes(self):
         names = []
-        for name, checkbox in zip("sctzyx", [self.s_checkbox, self.c_checkbox, self.t_checkbox,
-                         self.z_checkbox, self.y_checkbox, self.x_checkbox]):
+        for name, checkbox in zip(
+            "sctzyx",
+            [
+                self.s_checkbox,
+                self.c_checkbox,
+                self.t_checkbox,
+                self.z_checkbox,
+                self.y_checkbox,
+                self.x_checkbox,
+            ],
+        ):
             if checkbox.isChecked():
                 names.append(name)
         return names
-
 
     def start_training_loop(self):
         self.reset_training_state(keep_stats=True)
