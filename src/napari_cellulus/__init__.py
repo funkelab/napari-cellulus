@@ -1,4 +1,4 @@
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 from ._sample_data import tissuenet_sample
 from .widgets._widget import (
