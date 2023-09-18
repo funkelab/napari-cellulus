@@ -1,13 +1,12 @@
 import math
-from typing import Tuple, List
+from typing import List, Tuple
 
 import gunpowder as gp
+from cellulus.datasets import DatasetMetaData
 from napari.layers import Image
 from torch.utils.data import IterableDataset
 
 from .gp.nodes.napari_image_source import NapariImageSource
-
-from cellulus.datasets import DatasetMetaData
 
 
 class NapariDataset(IterableDataset):  # type: ignore
