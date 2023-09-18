@@ -115,6 +115,7 @@ def train_config_widget(
     num_workers: int = 8,
     control_point_spacing: int = 64,
     control_point_jitter: float = 2.0,
+    device="cpu",
 ):
     get_train_config(
         crop_size=crop_size,
@@ -131,6 +132,7 @@ def train_config_widget(
         num_workers=num_workers,
         control_point_spacing=control_point_spacing,
         control_point_jitter=control_point_jitter,
+        device=device,
     )
 
 
@@ -165,6 +167,10 @@ def get_training_state(dataset: Optional[NapariDataset] = None):
     global _scheduler
     global _model_config
     global _train_config
+
+    # set device
+    device = torch.device(_train_config.device)
+
     if _model_config is None:
         # TODO: deal with hard coded defaults
         _model_config = ModelConfig(num_fmaps=24, fmap_inc_factor=3)
@@ -182,7 +188,7 @@ def get_training_state(dataset: Optional[NapariDataset] = None):
                 tuple(factor) for factor in _model_config.downsampling_factors
             ],
             num_spatial_dims=dataset.get_num_spatial_dims(),
-        ).cuda()
+        ).to(device)
 
         # Weight initialization
         # TODO: move weight initialization to funlib.learn.torch
@@ -379,10 +385,17 @@ class TrainWidget(QWidget):
                 raw.data = raw.data.astype(np.float32)
 
                 global _model
+
                 assert (
                     _model is not None
                 ), "You must train a model before running inference"
                 model = _model
+
+                # set in eval mode
+                model.eval()
+
+                # device
+                device = torch.device(_train_config.device)
 
                 num_spatial_dims = len(raw.data.shape) - 2
                 num_channels = raw.data.shape[1]
@@ -391,6 +404,7 @@ class TrainWidget(QWidget):
                 model.set_infer(
                     p_salt_pepper=p_salt_pepper,
                     num_infer_iterations=num_infer_iterations,
+                    device=device,
                 )
 
                 # prediction crop size is the size of the scanned tiles to be provided to the model
@@ -405,7 +419,7 @@ class TrainWidget(QWidget):
                                 *crop_size,
                             ),
                             dtype=torch.float32,
-                        ).cuda()
+                        ).to(device)
                     ).shape
                 )
 
@@ -800,7 +814,9 @@ class TrainWidget(QWidget):
         axis_names,
         iteration=0,
     ):
+
         train_config = get_train_config()
+
         # Turn layer into dataset:
         train_dataset = NapariDataset(
             raw,
@@ -811,12 +827,6 @@ class TrainWidget(QWidget):
         )
         model, optimizer, scheduler = get_training_state(train_dataset)
 
-        # TODO: How to display profiling stats
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-        else:
-            device = torch.device("cpu")
-        model = model.to(device)
         model.train()
 
         train_dataloader = torch.utils.data.DataLoader(
@@ -835,15 +845,11 @@ class TrainWidget(QWidget):
             density=train_config.density,
             num_spatial_dims=train_dataset.get_num_spatial_dims(),
             reduce_mean=train_config.reduce_mean,
+            device=train_config.device,
         )
 
-        def train_iteration(
-            batch,
-            model,
-            criterion,
-            optimizer,
-        ):
-            prediction = model(batch.cuda())
+        def train_iteration(batch, model, criterion, optimizer, device):
+            prediction = model(batch.to(device))
             loss = criterion(prediction)
             loss = loss.mean()
             optimizer.zero_grad()
@@ -864,6 +870,7 @@ class TrainWidget(QWidget):
                 model=model,
                 criterion=criterion,
                 optimizer=optimizer,
+                device=train_config.device,
             )
             scheduler.step()
 
