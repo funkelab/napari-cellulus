@@ -97,9 +97,11 @@ def get_train_config(**kwargs):
     return _train_config
 
 
-@magic_factory(call_button="Save")
+@magic_factory(
+    call_button="Save", device={"choices": ["cpu", "cuda:0", "mps"]}
+)
 def train_config_widget(
-    crop_size: list[int] = [256, 256],
+    crop_size: list[int] = [252, 252],
     batch_size: int = 8,
     max_iterations: int = 100_000,
     initial_learning_rate: float = 4e-5,
