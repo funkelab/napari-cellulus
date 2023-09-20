@@ -163,13 +163,33 @@ class NapariDataset(IterableDataset):  # type: ignore
             while True:
                 # request one sample, all channels, plus crop dimensions
                 request = gp.BatchRequest()
-                request[self.raw] = gp.ArraySpec(
-                    roi=gp.Roi(
-                        (0,) * self.num_dims,
-                        (1, self.num_channels, *self.crop_size),
+                if self.num_channels == 0 and self.num_samples == 0:
+                    request[self.raw] = gp.ArraySpec(
+                        roi=gp.Roi(
+                            (0,) * (self.num_dims),
+                            self.crop_size,
+                        )
                     )
-                )
-
+                elif self.num_channels == 0 and self.num_samples != 0:
+                    request[self.raw] = gp.ArraySpec(
+                        roi=gp.Roi(
+                            (0,) * (self.num_dims), (1, *self.crop_size)
+                        )
+                    )
+                elif self.num_channels != 0 and self.num_samples == 0:
+                    request[self.raw] = gp.ArraySpec(
+                        roi=gp.Roi(
+                            (0,) * (self.num_dims),
+                            (self.num_channels, *self.crop_size),
+                        )
+                    )
+                elif self.num_channels != 0 and self.num_samples != 0:
+                    request[self.raw] = gp.ArraySpec(
+                        roi=gp.Roi(
+                            (0,) * (self.num_dims),
+                            (1, self.num_channels, *self.crop_size),
+                        )
+                    )
                 sample = self.pipeline.request_batch(request)
                 yield sample[self.raw].data[0]
 
