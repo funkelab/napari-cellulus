@@ -1,9 +1,5 @@
 from typing import Tuple
 
-import zarr
-
-from cellulus.configs import DatasetConfig
-
 
 class NapariDatasetMetaData:
     def __init__(self, shape, axis_names):
@@ -34,4 +30,3 @@ class NapariDatasetMetaData:
             elif axis_name == "x":
                 self.num_spatial_dims += 1
                 self.spatial_array += (shape[dim],)
-
