@@ -205,12 +205,9 @@ class NapariDataset(IterableDataset):  # type: ignore
         self.sample_dim = meta_data.sample_dim
         self.channel_dim = meta_data.channel_dim
         self.time_dim = meta_data.time_dim
-        print(
-            f"{self.num_dims}, {self.num_spatial_dims}, {self.num_channels}, {self.num_samples}, {self.sample_dim}, {self.channel_dim}, {self.time_dim}"
-        )
 
     def get_num_channels(self):
-        return self.num_channels
+        return 1 if self.num_channels == 0 else self.num_channels
 
     def get_num_spatial_dims(self):
         return self.num_spatial_dims
