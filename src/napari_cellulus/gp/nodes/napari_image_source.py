@@ -1,6 +1,7 @@
 from typing import Optional
 
 import gunpowder as gp
+import numpy as np
 from gunpowder.array_spec import ArraySpec
 from napari.layers import Image
 
@@ -10,7 +11,7 @@ class NapariImageSource(gp.BatchProvider):
     A gunpowder interface to a napari Image
     Args:
         image (Image):
-            The napari Image to pull data from
+            The napari image layer to pull data from
         key (``gp.ArrayKey``):
             The key to provide data into
     """
@@ -22,7 +23,7 @@ class NapariImageSource(gp.BatchProvider):
             self.array_spec = self._read_metadata(image)
         else:
             self.array_spec = spec
-        self.image = gp.Array(image.data.astype(float), self.array_spec)
+        self.image = gp.Array(image.data.astype(np.float32), self.array_spec)
         self.key = key
 
     def setup(self):
