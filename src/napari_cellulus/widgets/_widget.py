@@ -51,6 +51,7 @@ from ..gp.nodes.napari_image_source import NapariImageSource
 
 # local package imports
 from ..gui_helpers import MplCanvas, layer_choice_widget
+from ..meta_data import NapariDatasetMetaData
 
 
 @dataclasses.dataclass
@@ -382,8 +383,8 @@ class TrainWidget(QWidget):
                 bandwidth: int,
                 min_size: int,
             ) -> List[napari.types.LayerDataTuple]:
-                raw.data = raw.data.astype(np.float32)
 
+                raw.data = raw.data.astype(np.float32)
                 global _model
 
                 assert (
@@ -397,8 +398,14 @@ class TrainWidget(QWidget):
                 # device
                 device = torch.device(_train_config.device)
 
-                num_spatial_dims = len(raw.data.shape) - 2
-                num_channels = raw.data.shape[1]
+                axis_names = self.get_selected_axes()
+                meta_data = NapariDatasetMetaData(raw.data.shape, axis_names)
+
+                num_spatial_dims = meta_data.num_spatial_dims
+                num_channels = meta_data.num_channels
+
+                if meta_data.num_channels == 0:
+                    num_channels = 1
 
                 voxel_size = gp.Coordinate((1,) * num_spatial_dims)
                 model.set_infer(
@@ -423,8 +430,13 @@ class TrainWidget(QWidget):
                     ).shape
                 )
 
-                input_size = gp.Coordinate(input_shape[2:]) * voxel_size
-                output_size = gp.Coordinate(output_shape[2:]) * voxel_size
+                input_size = (
+                    gp.Coordinate(input_shape[-num_spatial_dims:]) * voxel_size
+                )
+                output_size = (
+                    gp.Coordinate(output_shape[-num_spatial_dims:])
+                    * voxel_size
+                )
 
                 context = (input_size - output_size) / 2
 
@@ -443,27 +455,110 @@ class TrainWidget(QWidget):
                         prediction_key: gp.ArraySpec(voxel_size=voxel_size)
                     },
                 )
-
-                pipeline = (
-                    NapariImageSource(
-                        raw,
-                        raw_key,
-                        gp.ArraySpec(
-                            gp.Roi(
-                                (0,) * num_spatial_dims, raw.data.shape[2:]
+                if meta_data.num_samples == 0 and meta_data.num_channels == 0:
+                    pipeline = (
+                        NapariImageSource(
+                            raw,
+                            raw_key,
+                            gp.ArraySpec(
+                                gp.Roi(
+                                    (0,) * num_spatial_dims,
+                                    raw.data.shape[-num_spatial_dims:],
+                                ),
+                                voxel_size=voxel_size,
                             ),
-                            voxel_size=voxel_size,
-                        ),
+                        )
+                        + gp.Pad(raw_key, context)
+                        + gp.Unsqueeze([raw_key], 0)
+                        + gp.Unsqueeze([raw_key], 0)
+                        + predict
+                        + gp.Scan(scan_request)
                     )
-                    + gp.Pad(raw_key, context)
-                    + predict
-                    + gp.Scan(scan_request)
-                )
+                elif (
+                    meta_data.num_samples != 0 and meta_data.num_channels == 0
+                ):
+                    pipeline = (
+                        NapariImageSource(
+                            raw,
+                            raw_key,
+                            gp.ArraySpec(
+                                gp.Roi(
+                                    (0,) * num_spatial_dims,
+                                    raw.data.shape[-num_spatial_dims:],
+                                ),
+                                voxel_size=voxel_size,
+                            ),
+                        )
+                        + gp.Pad(raw_key, context)
+                        + gp.Unsqueeze([raw_key], 1)
+                        + predict
+                        + gp.Scan(scan_request)
+                    )
+                elif (
+                    meta_data.num_samples == 0 and meta_data.num_channels != 0
+                ):
+                    pipeline = (
+                        NapariImageSource(
+                            raw,
+                            raw_key,
+                            gp.ArraySpec(
+                                gp.Roi(
+                                    (0,) * num_spatial_dims,
+                                    raw.data.shape[-num_spatial_dims:],
+                                ),
+                                voxel_size=voxel_size,
+                            ),
+                        )
+                        + gp.Pad(raw_key, context)
+                        + gp.Unsqueeze([raw_key], 0)
+                        + predict
+                        + gp.Scan(scan_request)
+                    )
 
+                elif (
+                    meta_data.num_samples != 0 and meta_data.num_channels == 0
+                ):
+                    pipeline = (
+                        NapariImageSource(
+                            raw,
+                            raw_key,
+                            gp.ArraySpec(
+                                gp.Roi(
+                                    (0,) * num_spatial_dims,
+                                    raw.data.shape[-num_spatial_dims:],
+                                ),
+                                voxel_size=voxel_size,
+                            ),
+                        )
+                        + gp.Pad(raw_key, context)
+                        + gp.Unsqueeze([raw_key], 1)
+                        + predict
+                        + gp.Scan(scan_request)
+                    )
+
+                elif (
+                    meta_data.num_samples != 0 and meta_data.num_channels != 0
+                ):
+                    pipeline = (
+                        NapariImageSource(
+                            raw,
+                            raw_key,
+                            gp.ArraySpec(
+                                gp.Roi(
+                                    (0,) * num_spatial_dims,
+                                    raw.data.shape[-num_spatial_dims:],
+                                ),
+                                voxel_size=voxel_size,
+                            ),
+                        )
+                        + gp.Pad(raw_key, context)
+                        + predict
+                        + gp.Scan(scan_request)
+                    )
                 # request to pipeline for ROI of whole image/volume
                 request = gp.BatchRequest()
-                request.add(raw_key, raw.data.shape[2:])
-                request.add(prediction_key, raw.data.shape[2:])
+                request.add(raw_key, raw.data.shape[-num_spatial_dims:])
+                request.add(prediction_key, raw.data.shape[-num_spatial_dims:])
                 with gp.build(pipeline):
                     batch = pipeline.request_batch(request)
 
@@ -489,7 +584,6 @@ class TrainWidget(QWidget):
                 labels = np.zeros_like(
                     prediction[:, 0:1, ...].data, dtype=np.uint64
                 )
-                num_spatial_dims = len(prediction.data.shape) - 2
 
                 for sample in tqdm(range(prediction.data.shape[0])):
                     embeddings = prediction[sample]
