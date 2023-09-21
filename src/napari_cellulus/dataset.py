@@ -2,6 +2,7 @@ import math
 from typing import List, Tuple
 
 import gunpowder as gp
+import numpy as np
 from napari.layers import Image
 from torch.utils.data import IterableDataset
 
@@ -81,7 +82,7 @@ class NapariDataset(IterableDataset):  # type: ignore
         shape = gp.Coordinate(self.layer.data.shape)
         raw_spec = gp.ArraySpec(
             roi=gp.Roi(offset, voxel_size * shape),
-            dtype=float,
+            dtype=np.float32,
             interpolatable=True,
             voxel_size=voxel_size,
         )
