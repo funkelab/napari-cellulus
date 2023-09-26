@@ -106,7 +106,7 @@ def train_config_widget(
     batch_size: int = 8,
     max_iterations: int = 100_000,
     initial_learning_rate: float = 4e-5,
-    density: float = 0.2,
+    density: float = 0.1,
     kappa: float = 10.0,
     temperature: float = 10.0,
     regularizer_weight: float = 1e-5,
