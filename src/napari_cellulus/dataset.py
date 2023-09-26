@@ -1,4 +1,3 @@
-import math
 from typing import List, Tuple
 
 import gunpowder as gp
@@ -91,70 +90,26 @@ class NapariDataset(IterableDataset):  # type: ignore
             self.pipeline = (
                 NapariImageSource(self.layer, self.raw, raw_spec)
                 + gp.RandomLocation()
-                + gp.ElasticAugment(
-                    control_point_spacing=(self.control_point_spacing,)
-                    * self.num_spatial_dims,
-                    jitter_sigma=(self.control_point_jitter,)
-                    * self.num_spatial_dims,
-                    rotation_interval=(0, math.pi / 2),
-                    scale_interval=(0.9, 1.1),
-                    subsample=4,
-                    spatial_dims=self.num_spatial_dims,
-                )
                 + gp.Unsqueeze([self.raw], 0)
                 + gp.Unsqueeze([self.raw], 0)
-                # + gp.SimpleAugment(mirror_only=spatial_dims, transpose_only=spatial_dims)
             )
         elif self.num_channels == 0 and self.num_samples != 0:
             self.pipeline = (
                 NapariImageSource(self.layer, self.raw, raw_spec)
                 + gp.Unsqueeze([self.raw], 1)
                 + gp.RandomLocation()
-                + gp.ElasticAugment(
-                    control_point_spacing=(self.control_point_spacing,)
-                    * self.num_spatial_dims,
-                    jitter_sigma=(self.control_point_jitter,)
-                    * self.num_spatial_dims,
-                    rotation_interval=(0, math.pi / 2),
-                    scale_interval=(0.9, 1.1),
-                    subsample=4,
-                    spatial_dims=self.num_spatial_dims,
-                )
                 + gp.Unsqueeze([self.raw], 1)
-                # + gp.SimpleAugment(mirror_only=spatial_dims, transpose_only=spatial_dims)
             )
         elif self.num_channels != 0 and self.num_samples == 0:
             self.pipeline = (
                 NapariImageSource(self.layer, self.raw, raw_spec)
                 + gp.RandomLocation()
-                + gp.ElasticAugment(
-                    control_point_spacing=(self.control_point_spacing,)
-                    * self.num_spatial_dims,
-                    jitter_sigma=(self.control_point_jitter,)
-                    * self.num_spatial_dims,
-                    rotation_interval=(0, math.pi / 2),
-                    scale_interval=(0.9, 1.1),
-                    subsample=4,
-                    spatial_dims=self.num_spatial_dims,
-                )
                 + gp.Unsqueeze([self.raw], 0)
-                # + gp.SimpleAugment(mirror_only=spatial_dims, transpose_only=spatial_dims)
             )
         elif self.num_channels != 0 and self.num_samples != 0:
             self.pipeline = (
                 NapariImageSource(self.layer, self.raw, raw_spec)
                 + gp.RandomLocation()
-                + gp.ElasticAugment(
-                    control_point_spacing=(self.control_point_spacing,)
-                    * self.num_spatial_dims,
-                    jitter_sigma=(self.control_point_jitter,)
-                    * self.num_spatial_dims,
-                    rotation_interval=(0, math.pi / 2),
-                    scale_interval=(0.9, 1.1),
-                    subsample=4,
-                    spatial_dims=self.num_spatial_dims,
-                )
-                # + gp.SimpleAugment(mirror_only=spatial_dims, transpose_only=spatial_dims)
             )
 
     def __yield_sample(self):
