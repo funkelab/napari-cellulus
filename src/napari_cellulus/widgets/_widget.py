@@ -429,7 +429,6 @@ class TrainWidget(QWidget):
                         ).to(device)
                     ).shape
                 )
-
                 input_size = (
                     gp.Coordinate(input_shape[-num_spatial_dims:]) * voxel_size
                 )
@@ -568,17 +567,20 @@ class TrainWidget(QWidget):
                     (
                         prediction[:, i : i + 1, ...].copy(),
                         {
-                            "name": "offset-" + "zyx"[num_channels - i]
-                            if i < num_channels
+                            "name": "offset-"
+                            + "zyx"[meta_data.num_spatial_dims - i]
+                            if i < meta_data.num_spatial_dims
                             else "std",
-                            "colormap": colormaps[num_channels - i]
-                            if i < num_channels
+                            "colormap": colormaps[
+                                meta_data.num_spatial_dims - i
+                            ]
+                            if i < meta_data.num_spatial_dims
                             else "gray",
                             "blending": "additive",
                         },
                         "image",
                     )
-                    for i in range(num_channels + 1)
+                    for i in range(meta_data.num_spatial_dims + 1)
                 ]
 
                 labels = np.zeros_like(
