@@ -5,23 +5,13 @@ contributions:
     - id: napari-cellulus.tissuenet_sample
       python_name: napari_cellulus._sample_data:tissuenet_sample
       title: Load sample data from Cellulus
-    - id: napari-cellulus.train_config
-      python_name: napari_cellulus.widgets._widget:train_config_widget
-      title: Make the training config widget
-    - id: napari-cellulus.model_config
-      python_name: napari_cellulus.widgets._widget:model_config_widget
-      title: Make the model config widget
-    - id: napari-cellulus.train_widget
-      python_name: napari_cellulus.widgets._widget:TrainWidget
-      title: Make the train widget
+    - id: napari-cellulus.SegmentationWidget
+      python_name: napari_cellulus.widgets._widget:SegmentationWidget
+      title: Cellulus
   sample_data:
     - command: napari-cellulus.tissuenet_sample
       display_name: Cellulus
       key: tissuenet_sample
   widgets:
-    - command: napari-cellulus.train_config
-      display_name: Train Config Widget
-    - command: napari-cellulus.model_config
-      display_name: Model Config Widget
-    - command: napari-cellulus.train_widget
-      display_name: Train Widget
+    - command: napari-cellulus.SegmentationWidget
+      display_name: Cellulus
