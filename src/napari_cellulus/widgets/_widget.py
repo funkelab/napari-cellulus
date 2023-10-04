@@ -193,11 +193,11 @@ def get_training_state(dataset: Optional[NapariDataset] = None):
 
         # Weight initialization
         # TODO: move weight initialization to funlib.learn.torch
-        for _name, layer in _model.named_modules():
-            if isinstance(layer, torch.nn.modules.conv._ConvNd):
-                torch.nn.init.kaiming_normal_(
-                    layer.weight, nonlinearity="relu"
-                )
+        # for _name, layer in _model.named_modules():
+        #    if isinstance(layer, torch.nn.modules.conv._ConvNd):
+        #        torch.nn.init.kaiming_normal_(
+        #            layer.weight, nonlinearity="relu"
+        #        )
 
         _optimizer = torch.optim.Adam(
             _model.parameters(),
@@ -403,6 +403,7 @@ class TrainWidget(QWidget):
 
                 num_spatial_dims = meta_data.num_spatial_dims
                 num_channels = meta_data.num_channels
+                spatial_dims = meta_data.spatial_dims
 
                 if meta_data.num_channels == 0:
                     num_channels = 1
@@ -466,6 +467,7 @@ class TrainWidget(QWidget):
                                 ),
                                 voxel_size=voxel_size,
                             ),
+                            spatial_dims,
                         )
                         + gp.Pad(raw_key, context)
                         + gp.Unsqueeze([raw_key], 0)
@@ -487,6 +489,7 @@ class TrainWidget(QWidget):
                                 ),
                                 voxel_size=voxel_size,
                             ),
+                            spatial_dims,
                         )
                         + gp.Pad(raw_key, context)
                         + gp.Unsqueeze([raw_key], 1)
@@ -507,6 +510,7 @@ class TrainWidget(QWidget):
                                 ),
                                 voxel_size=voxel_size,
                             ),
+                            spatial_dims,
                         )
                         + gp.Pad(raw_key, context)
                         + gp.Unsqueeze([raw_key], 0)
@@ -528,6 +532,7 @@ class TrainWidget(QWidget):
                                 ),
                                 voxel_size=voxel_size,
                             ),
+                            spatial_dims,
                         )
                         + gp.Pad(raw_key, context)
                         + gp.Unsqueeze([raw_key], 1)
@@ -549,6 +554,7 @@ class TrainWidget(QWidget):
                                 ),
                                 voxel_size=voxel_size,
                             ),
+                            spatial_dims,
                         )
                         + gp.Pad(raw_key, context)
                         + predict
