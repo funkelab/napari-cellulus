@@ -11,6 +11,7 @@ class NapariDatasetMetaData:
         self.channel_dim = None
         self.time_dim = None
         self.spatial_array: Tuple[int, ...] = ()
+        self.spatial_dims = ()
         for dim, axis_name in enumerate(axis_names):
             if axis_name == "s":
                 self.sample_dim = dim
@@ -24,9 +25,12 @@ class NapariDatasetMetaData:
             elif axis_name == "z":
                 self.num_spatial_dims += 1
                 self.spatial_array += (shape[dim],)
+                self.spatial_dims += (-3,)
             elif axis_name == "y":
                 self.num_spatial_dims += 1
                 self.spatial_array += (shape[dim],)
+                self.spatial_dims += (-2,)
             elif axis_name == "x":
                 self.num_spatial_dims += 1
                 self.spatial_array += (shape[dim],)
+                self.spatial_dims += (-1,)
