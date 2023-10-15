@@ -20,10 +20,8 @@ class SegmentationWidget(QScrollArea):
         self.viewer = napari_viewer
 
         # define components
-        logo_path = ""
-        self.logo_label = QLabel(f'<h1><img src="{logo_path}">Cellulus</h1>')
         self.method_description_label = QLabel(
-            '<small>Unsupervised Learning of Object-Centric Embeddings<br>for Cell Instance Segmentation in Microscopy Images.<br>If you are using this in your research, please <a href="https://github.com/funkelab/cellulus#citation" style="color:gray;">cite us</a>.</small>'
+            '<small>Unsupervised Learning of Object-Centric Embeddings<br>for Cell Instance Segmentation in Microscopy Images.<br>If you are using this in your research, please <a href="https://github.com/funkelab/cellulus#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/funkelab/cellulus" style="color:gray;">https://github.com/funkelab/cellulus</a></tt></small>'
         )
 
         self.download_data_label = QLabel("<h3>Download Data</h3>")
@@ -40,7 +38,6 @@ class SegmentationWidget(QScrollArea):
 
         # inner layout
         grid_0 = QGridLayout()
-        grid_0.addWidget(self.logo_label, 0, 0, 1, 1)
         grid_0.addWidget(self.method_description_label, 0, 1, 1, 1)
         grid_0.setSpacing(10)
 
