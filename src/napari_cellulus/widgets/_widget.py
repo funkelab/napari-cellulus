@@ -6,8 +6,6 @@ from napari.qt.threading import FunctionWorker, thread_worker
 from qtpy.QtWidgets import (
     QGridLayout,
     QLabel,
-    QLineEdit,
-    QPushButton,
     QScrollArea,
     QVBoxLayout,
 )
@@ -24,15 +22,6 @@ class SegmentationWidget(QScrollArea):
             '<small>Unsupervised Learning of Object-Centric Embeddings<br>for Cell Instance Segmentation in Microscopy Images.<br>If you are using this in your research, please <a href="https://github.com/funkelab/cellulus#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/funkelab/cellulus" style="color:gray;">https://github.com/funkelab/cellulus</a></tt></small>'
         )
 
-        self.download_data_label = QLabel("<h3>Download Data</h3>")
-        self.data_dir_label = QLabel("Data Directory")
-        self.data_dir_pushbutton = QPushButton("Browse")
-        self.data_dir_pushbutton.setMaximumWidth(280)
-        # self.data_dir_pushbutton.clicked.connect(self._prepare_data_dir)
-
-        self.object_size_label = QLabel("Rough Object size [px]")
-        self.object_size_edit = QLineEdit("30")
-
         # define layout
         outer_layout = QVBoxLayout()
 
@@ -41,14 +30,75 @@ class SegmentationWidget(QScrollArea):
         grid_0.addWidget(self.method_description_label, 0, 1, 1, 1)
         grid_0.setSpacing(10)
 
+        # Add train configs widget
+        collapsible_train_configs = QCollapsible("Train Configs", self)
+        collapsible_train_configs.addWidget(self.create_train_configs_widget)
+
+        # Add model configs widget
+        collapsible_model_configs = QCollapsible("Model Configs", self)
+        collapsible_model_configs.addWidget(self.create_model_configs_widget)
+
         # Add segment widget
         collapsible_0 = QCollapsible("Inference", self)
         collapsible_0.addWidget(self.segment_widget)
 
         outer_layout.addLayout(grid_0)
+        outer_layout.addWidget(collapsible_train_configs)
+        outer_layout.addWidget(collapsible_model_configs)
         outer_layout.addWidget(collapsible_0)
         self.setLayout(outer_layout)
-        self.setFixedWidth(500)
+        self.setFixedWidth(400)
+
+    @property
+    def create_train_configs_widget(self):
+        @magic_factory(
+            call_button="Save", device={"choices": ["cuda:0", "cpu", "mps"]}
+        )
+        def train_configs_widget(
+            crop_size: int = 252,
+            batch_size: int = 8,
+            max_iterations: int = 100_000,
+            initial_learning_rate: float = 4e-5,
+            temperature: float = 10.0,
+            regularizer_weight: float = 1e-5,
+            reduce_mean: bool = True,
+            density: float = 0.1,
+            kappa: float = 10.0,
+            save_model_every: int = 1e3,
+            save_snapshot_every: int = 1e3,
+            num_workers: int = 8,
+            device="mps",
+        ):
+            # Specify what should happen when 'Save' button is pressed
+            pass
+
+        if not hasattr(self, "__create_train_configs_widget"):
+            self.__create_train_configs_widget = train_configs_widget()
+            self.__create_train_configs_widget_native = (
+                self.__create_train_configs_widget.native
+            )
+        return self.__create_train_configs_widget_native
+
+    @property
+    def create_model_configs_widget(self):
+        @magic_factory(call_button="Save")
+        def model_configs_widget(
+            num_fmaps: int = 256,
+            fmap_inc_factor: int = 3,
+            features_in_last_layer: int = 64,
+            downsampling_factors: int = 2,
+            downsampling_layers: int = 1,
+            initialize: bool = True,
+        ):
+            # Specify what should happen when 'Save' button is pressed
+            pass
+
+        if not hasattr(self, "__create_model_configs_widget"):
+            self.__create_model_configs_widget = model_configs_widget()
+            self.__create_model_configs_widget_native = (
+                self.__create_model_configs_widget.native
+            )
+        return self.__create_model_configs_widget_native
 
     @property
     def segment_widget(self):
