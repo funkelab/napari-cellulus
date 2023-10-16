@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List
 
 import gunpowder as gp
 import numpy as np
@@ -14,7 +14,7 @@ class NapariDataset(IterableDataset):  # type: ignore
         self,
         layer: Image,
         axis_names: List[str],
-        crop_size: Tuple[int, ...],
+        crop_size: int,
         control_point_spacing: int,
         control_point_jitter: float,
     ):
@@ -57,17 +57,11 @@ class NapariDataset(IterableDataset):  # type: ignore
 
         self.layer = layer
         self.axis_names = axis_names
-        self.crop_size = crop_size
         self.control_point_spacing = control_point_spacing
         self.control_point_jitter = control_point_jitter
         self.__read_meta_data()
-
-        assert len(crop_size) == self.num_spatial_dims, (
-            f'"crop_size" must have the same dimension as the '
-            f'spatial(temporal) dimensions of the "{self.layer.name}"'
-            f"layer which is {self.num_spatial_dims}, but it is {crop_size}"
-        )
-
+        print(f"Number of spatial dims is {self.num_spatial_dims}")
+        self.crop_size = (crop_size,) * self.num_spatial_dims
         self.__setup_pipeline()
 
     def __iter__(self):
