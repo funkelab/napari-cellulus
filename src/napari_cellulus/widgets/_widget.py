@@ -38,12 +38,17 @@ class SegmentationWidget(QScrollArea):
         self.widget = QWidget()
         self.viewer = napari_viewer
 
-        # define components
+        # initialize train_config and model_config
+
+        self.train_config = None
+        self.model_config = None
+
+        # initialize UI components
         method_description_label = QLabel(
             '<small>Unsupervised Learning of Object-Centric Embeddings<br>for Cell Instance Segmentation in Microscopy Images.<br>If you are using this in your research, please <a href="https://github.com/funkelab/cellulus#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/funkelab/cellulus" style="color:gray;">https://github.com/funkelab/cellulus</a></tt></small>'
         )
 
-        # define layout
+        # specify layout
         outer_layout = QVBoxLayout()
 
         # Initialize train configs widget
@@ -92,7 +97,7 @@ class SegmentationWidget(QScrollArea):
         train_button = QPushButton("Train!", self)
         train_button.clicked.connect(self.prepare_for_training)
 
-        # Add everything to outer_layout
+        # Add all components to outer_layout
         outer_layout.addWidget(method_description_label)
         outer_layout.addWidget(collapsible_train_configs)
         outer_layout.addWidget(collapsible_model_configs)
@@ -239,12 +244,34 @@ class SegmentationWidget(QScrollArea):
     def prepare_for_training(self):
 
         # check if train_config object exists
-        # check if model_config object exists
-
         if self.train_config is None:
-            pass  # TODO
+            # set default values
+            self.train_config = {
+                "crop_size": 252,
+                "batch_size": 8,
+                "max_iterations": 100_000,
+                "initial_learning_rate": 4e-5,
+                "temperature": 10.0,
+                "regularizer_weight": 1e-5,
+                "reduce_mean": True,
+                "density": 0.1,
+                "kappa": 10.0,
+                "num_workers": 8,
+                "control_point_spacing": 64,
+                "control_point_jitter": 2.0,
+                "device": "mps",
+            }
+
+        # check if model_config object exists
         if self.model_config is None:
-            pass  # TODO
+            self.model_config = {
+                "num_fmaps": 256,
+                "fmap_inc_factor": 3,
+                "features_in_last_layer": 64,
+                "downsampling_factors": 2,
+                "downsampling_layers": 1,
+                "initialize": True,
+            }
 
         self.__training_generator = self.train_napari(iteration=0)  # TODO
         self.__training_generator.yielded.connect(self.on_yield)
