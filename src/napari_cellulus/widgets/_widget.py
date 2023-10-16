@@ -43,6 +43,13 @@ class SegmentationWidget(QScrollArea):
         self.train_config = None
         self.model_config = None
 
+        # initialize losses and iterations
+        self.losses = []
+        self.iterations = []
+
+        # initialize mode. this will change to 'training' and 'inferring' later
+        self.mode = "configuring"
+
         # initialize UI components
         method_description_label = QLabel(
             '<small>Unsupervised Learning of Object-Centric Embeddings<br>for Cell Instance Segmentation in Microscopy Images.<br>If you are using this in your research, please <a href="https://github.com/funkelab/cellulus#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/funkelab/cellulus" style="color:gray;">https://github.com/funkelab/cellulus</a></tt></small>'
@@ -60,15 +67,21 @@ class SegmentationWidget(QScrollArea):
         collapsible_model_configs.addWidget(self.create_model_configs_widget)
 
         # Initialize loss/iterations widget
-        self.progress_plot = MplCanvas(self, width=5, height=3, dpi=100)
-        toolbar = NavigationToolbar(self.progress_plot, self)
-        progress_plot_layout = QVBoxLayout()
-        progress_plot_layout.addWidget(toolbar)
-        progress_plot_layout.addWidget(self.progress_plot)
-        self.loss_plot = None
-        self.val_plot = None
+        self.canvas = MplCanvas(self, width=5, height=3, dpi=100)
+        toolbar = NavigationToolbar(self.canvas, self)
+        canvas_layout = QVBoxLayout()
+        canvas_layout.addWidget(toolbar)
+        canvas_layout.addWidget(self.canvas)
+        if len(self.iterations) == 0:
+            self.loss_plot = self.canvas.axes.plot(
+                [], [], label="Training Loss"
+            )[0]
+            self.canvas.axes.legend()
+            self.canvas.axes.set_title("Training Progress")
+            self.canvas.axes.set_xlabel("Iterations")
+            self.canvas.axes.set_ylabel("Loss")
         plot_container_widget = QWidget()
-        plot_container_widget.setLayout(progress_plot_layout)
+        plot_container_widget.setLayout(canvas_layout)
 
         # Initialize Layer Choice
         self.raw_selector = layer_choice_widget(
@@ -94,8 +107,8 @@ class SegmentationWidget(QScrollArea):
         axis_selector.setLayout(axis_layout)
 
         # Initialize Train Button
-        train_button = QPushButton("Train!", self)
-        train_button.clicked.connect(self.prepare_for_training)
+        self.train_button = QPushButton("Train!", self)
+        self.train_button.clicked.connect(self.prepare_for_training)
 
         # Add all components to outer_layout
         outer_layout.addWidget(method_description_label)
@@ -104,7 +117,7 @@ class SegmentationWidget(QScrollArea):
         outer_layout.addWidget(plot_container_widget)
         outer_layout.addWidget(self.raw_selector.native)
         outer_layout.addWidget(axis_selector)
-        outer_layout.addWidget(train_button)
+        outer_layout.addWidget(self.train_button)
 
         outer_layout.setSpacing(20)
         self.widget.setLayout(outer_layout)
@@ -273,13 +286,36 @@ class SegmentationWidget(QScrollArea):
                 "initialize": True,
             }
 
-        self.__training_generator = self.train_napari(iteration=0)  # TODO
-        self.__training_generator.yielded.connect(self.on_yield)
-        self.__training_generator.returned.connect(self.on_return)
-        self.__training_generator.start()
+        self.update_mode()
+
+        if self.mode == "training":
+            self.worker = self.train_napari()
+            self.worker.yielded.connect(self.on_yield)
+            self.worker.returned.connect(self.on_return)
+            self.worker.start()
+        elif self.mode == "configuring":
+            state = {
+                "iteration": self.iterations[-1],
+                "model_state_dict": self.model.state_dict(),
+                "optim_state_dict": self.optimizer.state_dict(),
+                "iterations": self.iterations,
+                "losses": self.losses,
+            }
+            filename = os.path.join("models", "last.pth")
+            torch.save(state, filename)
+            self.worker.quit()
+
+    def update_mode(self):
+
+        if self.train_button.text() == "Train!":
+            self.train_button.setText("Pause!")
+            self.mode = "training"
+        elif self.train_button.text() == "Pause!":
+            self.train_button.setText("Train!")
+            self.mode = "configuring"
 
     @thread_worker
-    def train_napari(self, iteration=0):
+    def train_napari(self):
 
         # Turn layer into dataset
         train_dataset = NapariDataset(
@@ -310,7 +346,7 @@ class SegmentationWidget(QScrollArea):
         ] * self.model_config["downsampling_layers"]
 
         # set model
-        model = get_model(
+        self.model = get_model(
             in_channels=train_dataset.get_num_channels(),
             out_channels=train_dataset.get_num_spatial_dims(),
             num_fmaps=self.model_config["num_fmaps"],
@@ -325,11 +361,11 @@ class SegmentationWidget(QScrollArea):
         # set device
         device = torch.device(self.train_config["device"])
 
-        model = model.to(device)
+        self.model = self.model.to(device)
 
         # initialize model weights
         if self.model_config["initialize"]:
-            for _name, layer in model.named_modules():
+            for _name, layer in self.model.named_modules():
                 if isinstance(layer, torch.nn.modules.conv._ConvNd):
                     torch.nn.init.kaiming_normal_(
                         layer.weight, nonlinearity="relu"
@@ -347,8 +383,8 @@ class SegmentationWidget(QScrollArea):
         )
 
         # set optimizer
-        optimizer = torch.optim.Adam(
-            model.parameters(),
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
             lr=self.train_config["initial_learning_rate"],
         )
 
@@ -360,19 +396,21 @@ class SegmentationWidget(QScrollArea):
             )
 
         # resume training
-        start_iteration = 0
+        if len(self.iterations) == 0:
+            start_iteration = 0
+        else:
+            start_iteration = self.iterations[-1]
 
-        # TODO
-        # if self.model_config.checkpoint is None:
-        #    pass
-        # else:
-        #    print(f"Resuming model from {self.model_config.checkpoint}")
-        #    state = torch.load(self.model_config.checkpoint, map_location=device)
-        #    start_iteration = state["iteration"] + 1
-        #    lowest_loss = state["lowest_loss"]
-        #    model.load_state_dict(state["model_state_dict"], strict=True)
-        #    optimizer.load_state_dict(state["optim_state_dict"])
-        #    logger.data = state["logger_data"]
+        if not os.path.exists("models/last.pth"):
+            pass
+        else:
+            print("Resuming model from 'models/last.pth'")
+            state = torch.load("models/last.pth", map_location=device)
+            start_iteration = state["iteration"] + 1
+            self.iterations = state["iterations"]
+            self.losses = state["losses"]
+            self.model.load_state_dict(state["model_state_dict"], strict=True)
+            self.optimizer.load_state_dict(state["optim_state_dict"])
 
         # call `train_iteration`
         for iteration, batch in zip(
@@ -380,14 +418,14 @@ class SegmentationWidget(QScrollArea):
             train_dataloader,
         ):
             scheduler = torch.optim.lr_scheduler.LambdaLR(
-                optimizer, lr_lambda=lambda_, last_epoch=iteration - 1
+                self.optimizer, lr_lambda=lambda_, last_epoch=iteration - 1
             )
 
             train_loss, prediction = train_iteration(
                 batch,
-                model=model,
+                model=self.model,
                 criterion=criterion,
-                optimizer=optimizer,
+                optimizer=self.optimizer,
                 device=device,
             )
             scheduler.step()
@@ -397,6 +435,16 @@ class SegmentationWidget(QScrollArea):
         # TODO
         iteration, loss = step_data
         print(iteration, loss)
+        self.iterations.append(iteration)
+        self.losses.append(loss)
+        self.update_canvas()
+
+    def update_canvas(self):
+        self.loss_plot.set_xdata(self.iterations)
+        self.loss_plot.set_ydata(self.losses)
+        self.canvas.axes.relim()
+        self.canvas.axes.autoscale_view()
+        self.canvas.draw()
 
     def on_return(self):
         pass  # TODO
