@@ -1,5 +1,4 @@
 import os
-from typing import List
 
 import napari
 import torch
@@ -12,13 +11,14 @@ from magicgui import magic_factory
 from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
-from napari.qt.threading import FunctionWorker, thread_worker
+from napari.qt.threading import thread_worker
 from PyQt5.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -58,6 +58,16 @@ class SegmentationWidget(QScrollArea):
         # specify layout
         outer_layout = QVBoxLayout()
 
+        # Initialize object size widget
+        object_size_label = QLabel(self)
+        object_size_label.setText("Object Size [px]:")
+        object_size_line = QLineEdit(self)
+        hbox_layout = QHBoxLayout()
+        hbox_layout.addWidget(object_size_label)
+        hbox_layout.addWidget(object_size_line)
+        object_size_box = QGroupBox("")
+        object_size_box.setLayout(hbox_layout)
+
         # Initialize train configs widget
         collapsible_train_configs = QCollapsible("Train Configs", self)
         collapsible_train_configs.addWidget(self.create_train_configs_widget)
@@ -77,7 +87,6 @@ class SegmentationWidget(QScrollArea):
                 [], [], label="Training Loss"
             )[0]
             self.canvas.axes.legend()
-            self.canvas.axes.set_title("Training Progress")
             self.canvas.axes.set_xlabel("Iterations")
             self.canvas.axes.set_ylabel("Loss")
         plot_container_widget = QWidget()
@@ -110,14 +119,28 @@ class SegmentationWidget(QScrollArea):
         self.train_button = QPushButton("Train!", self)
         self.train_button.clicked.connect(self.prepare_for_training)
 
+        # Initialize Model Configs widget
+        collapsible_inference_configs = QCollapsible("Inference Configs", self)
+        collapsible_inference_configs.addWidget(
+            self.create_inference_configs_widget
+        )
+
+        # Initialize Segment Button
+        self.segment_button = QPushButton("Segment!", self)
+        self.segment_button.clicked.connect(self.prepare_for_segmenting)
+
         # Add all components to outer_layout
+
         outer_layout.addWidget(method_description_label)
+        outer_layout.addWidget(object_size_box)
         outer_layout.addWidget(collapsible_train_configs)
         outer_layout.addWidget(collapsible_model_configs)
         outer_layout.addWidget(plot_container_widget)
         outer_layout.addWidget(self.raw_selector.native)
         outer_layout.addWidget(axis_selector)
         outer_layout.addWidget(self.train_button)
+        outer_layout.addWidget(collapsible_inference_configs)
+        outer_layout.addWidget(self.segment_button)
 
         outer_layout.setSpacing(20)
         self.widget.setLayout(outer_layout)
@@ -200,42 +223,36 @@ class SegmentationWidget(QScrollArea):
         return self.__create_model_configs_widget_native
 
     @property
-    def segment_widget(self):
-        @magic_factory(call_button="Segment")
-        def segment(
-            raw: napari.layers.Image,
+    def create_inference_configs_widget(self):
+        @magic_factory(call_button="Save")
+        def inference_configs_widget(
             crop_size: int = 252,
             p_salt_pepper: float = 0.1,
             num_infer_iterations: int = 16,
             bandwidth: int = 7,
+            reduction_probability: float = 0.1,
             min_size: int = 25,
-        ) -> FunctionWorker[List[napari.types.LayerDataTuple]]:
-            @thread_worker(
-                connect={"returned": lambda: self.set_buttons("paused")},
-                progress={"total": 0, "desc": "Segmenting"},
+            grow_distance: int = 3,
+            shrink_distance: int = 6,
+        ):
+            # Specify what should happen when 'Save' button is pressed
+            self.inference_config = {
+                "crop_size": crop_size,
+                "p_salt_pepper": p_salt_pepper,
+                "num_infer_iterations": num_infer_iterations,
+                "bandwidth": bandwidth,
+                "reduction_probability": reduction_probability,
+                "min_size": min_size,
+                "grow_distance": grow_distance,
+                "shrink_distance": shrink_distance,
+            }
+
+        if not hasattr(self, "__create_inference_configs_widget"):
+            self.__create_inference_configs_widget = inference_configs_widget()
+            self.__create_inference_configs_widget_native = (
+                self.__create_inference_configs_widget.native
             )
-            def async_segment(
-                raw: napari.layers.Image,
-                crop_size: int,
-                p_salt_pepper: float,
-                num_infer_iterations: int,
-                bandwidth: int,
-                min_size: int,
-            ) -> List[napari.types.LayerDataTuple]:
-
-                return async_segment(
-                    raw,
-                    crop_size=crop_size,
-                    p_salt_pepper=p_salt_pepper,
-                    num_infer_iterations=num_infer_iterations,
-                    bandwidth=bandwidth,
-                    min_size=min_size,
-                )
-
-        if not hasattr(self, "__segment_widget"):
-            self.__segment_widget = segment()
-            self.__segment_widget_native = self.__segment_widget.native
-        return self.__segment_widget_native
+        return self.__create_inference_configs_widget_native
 
     def get_selected_axes(self):
         names = []
@@ -448,3 +465,6 @@ class SegmentationWidget(QScrollArea):
 
     def on_return(self):
         pass  # TODO
+
+    def prepare_for_segmenting(self):
+        pass
