@@ -82,27 +82,35 @@ class NapariDataset(IterableDataset):  # type: ignore
 
         if self.num_channels == 0 and self.num_samples == 0:
             self.pipeline = (
-                NapariImageSource(self.layer, self.raw, raw_spec)
+                NapariImageSource(
+                    self.layer, self.raw, raw_spec, self.spatial_dims
+                )
                 + gp.RandomLocation()
                 + gp.Unsqueeze([self.raw], 0)
                 + gp.Unsqueeze([self.raw], 0)
             )
         elif self.num_channels == 0 and self.num_samples != 0:
             self.pipeline = (
-                NapariImageSource(self.layer, self.raw, raw_spec)
+                NapariImageSource(
+                    self.layer, self.raw, raw_spec, self.spatial_dims
+                )
                 + gp.Unsqueeze([self.raw], 1)
                 + gp.RandomLocation()
                 + gp.Unsqueeze([self.raw], 1)
             )
         elif self.num_channels != 0 and self.num_samples == 0:
             self.pipeline = (
-                NapariImageSource(self.layer, self.raw, raw_spec)
+                NapariImageSource(
+                    self.layer, self.raw, raw_spec, self.spatial_dims
+                )
                 + gp.RandomLocation()
                 + gp.Unsqueeze([self.raw], 0)
             )
         elif self.num_channels != 0 and self.num_samples != 0:
             self.pipeline = (
-                NapariImageSource(self.layer, self.raw, raw_spec)
+                NapariImageSource(
+                    self.layer, self.raw, raw_spec, self.spatial_dims
+                )
                 + gp.RandomLocation()
             )
 
@@ -155,6 +163,7 @@ class NapariDataset(IterableDataset):  # type: ignore
         self.sample_dim = meta_data.sample_dim
         self.channel_dim = meta_data.channel_dim
         self.time_dim = meta_data.time_dim
+        self.spatial_dims = meta_data.spatial_dims
 
     def get_num_channels(self):
         return 1 if self.num_channels == 0 else self.num_channels
