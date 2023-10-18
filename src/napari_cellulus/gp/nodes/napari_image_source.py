@@ -1,7 +1,6 @@
-from typing import Optional
-
 import gunpowder as gp
 import numpy as np
+from csbdeep.utils import normalize
 from gunpowder.array_spec import ArraySpec
 from napari.layers import Image
 
@@ -17,13 +16,19 @@ class NapariImageSource(gp.BatchProvider):
     """
 
     def __init__(
-        self, image: Image, key: gp.ArrayKey, spec: Optional[ArraySpec] = None
+        self, image: Image, key: gp.ArrayKey, spec: ArraySpec, spatial_dims
     ):
-        if spec is None:
-            self.array_spec = self._read_metadata(image)
-        else:
-            self.array_spec = spec
-        self.image = gp.Array(image.data.astype(np.float32), self.array_spec)
+        self.array_spec = spec
+        self.image = gp.Array(
+            normalize(
+                image.data.astype(np.float32),
+                pmin=1,
+                pmax=99.8,
+                axis=spatial_dims,
+            ),
+            self.array_spec,
+        )
+        self.spatial_dims = spatial_dims
         self.key = key
 
     def setup(self):
