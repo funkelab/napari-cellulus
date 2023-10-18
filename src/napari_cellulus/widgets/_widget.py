@@ -1,10 +1,13 @@
 import os
 
+import gunpowder as gp
 import napari
+import numpy as np
 import torch
 from cellulus.criterions import get_loss
 from cellulus.models import get_model
 from cellulus.train import train_iteration
+from cellulus.utils.mean_shift import mean_shift_segmentation
 from magicgui import magic_factory
 
 # widget stuff
@@ -12,21 +15,24 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
 from napari.qt.threading import thread_worker
-from PyQt5.QtCore import Qt
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
+from scipy.ndimage import distance_transform_edt as dtedt
 from superqt import QCollapsible
 
 from ..dataset import NapariDataset
+from ..gp.nodes.napari_image_source import NapariImageSource
 
 # local package imports
 from ..gui_helpers import MplCanvas, layer_choice_widget
@@ -42,12 +48,13 @@ class SegmentationWidget(QScrollArea):
 
         self.train_config = None
         self.model_config = None
+        self.segment_config = None
 
         # initialize losses and iterations
         self.losses = []
         self.iterations = []
 
-        # initialize mode. this will change to 'training' and 'inferring' later
+        # initialize mode. this will change to 'training' and 'segmentring' later
         self.mode = "configuring"
 
         # initialize UI components
@@ -61,10 +68,10 @@ class SegmentationWidget(QScrollArea):
         # Initialize object size widget
         object_size_label = QLabel(self)
         object_size_label.setText("Object Size [px]:")
-        object_size_line = QLineEdit(self)
+        self.object_size_line = QLineEdit(self)
         hbox_layout = QHBoxLayout()
         hbox_layout.addWidget(object_size_label)
-        hbox_layout.addWidget(object_size_line)
+        hbox_layout.addWidget(self.object_size_line)
         object_size_box = QGroupBox("")
         object_size_box.setLayout(hbox_layout)
 
@@ -116,18 +123,21 @@ class SegmentationWidget(QScrollArea):
         axis_selector.setLayout(axis_layout)
 
         # Initialize Train Button
-        self.train_button = QPushButton("Train!", self)
+        self.train_button = QPushButton("Train", self)
         self.train_button.clicked.connect(self.prepare_for_training)
 
         # Initialize Model Configs widget
-        collapsible_inference_configs = QCollapsible("Inference Configs", self)
-        collapsible_inference_configs.addWidget(
-            self.create_inference_configs_widget
+        collapsible_segment_configs = QCollapsible("Inference Configs", self)
+        collapsible_segment_configs.addWidget(
+            self.create_segment_configs_widget
         )
 
         # Initialize Segment Button
-        self.segment_button = QPushButton("Segment!", self)
+        self.segment_button = QPushButton("Segment", self)
         self.segment_button.clicked.connect(self.prepare_for_segmenting)
+
+        # Initialize progress bar
+        self.pbar = QProgressBar(self)
 
         # Add all components to outer_layout
 
@@ -139,8 +149,9 @@ class SegmentationWidget(QScrollArea):
         outer_layout.addWidget(self.raw_selector.native)
         outer_layout.addWidget(axis_selector)
         outer_layout.addWidget(self.train_button)
-        outer_layout.addWidget(collapsible_inference_configs)
+        outer_layout.addWidget(collapsible_segment_configs)
         outer_layout.addWidget(self.segment_button)
+        outer_layout.addWidget(self.pbar)
 
         outer_layout.setSpacing(20)
         self.widget.setLayout(outer_layout)
@@ -223,9 +234,9 @@ class SegmentationWidget(QScrollArea):
         return self.__create_model_configs_widget_native
 
     @property
-    def create_inference_configs_widget(self):
+    def create_segment_configs_widget(self):
         @magic_factory(call_button="Save")
-        def inference_configs_widget(
+        def segment_configs_widget(
             crop_size: int = 252,
             p_salt_pepper: float = 0.1,
             num_infer_iterations: int = 16,
@@ -236,7 +247,7 @@ class SegmentationWidget(QScrollArea):
             shrink_distance: int = 6,
         ):
             # Specify what should happen when 'Save' button is pressed
-            self.inference_config = {
+            self.segment_config = {
                 "crop_size": crop_size,
                 "p_salt_pepper": p_salt_pepper,
                 "num_infer_iterations": num_infer_iterations,
@@ -247,12 +258,12 @@ class SegmentationWidget(QScrollArea):
                 "shrink_distance": shrink_distance,
             }
 
-        if not hasattr(self, "__create_inference_configs_widget"):
-            self.__create_inference_configs_widget = inference_configs_widget()
-            self.__create_inference_configs_widget_native = (
-                self.__create_inference_configs_widget.native
+        if not hasattr(self, "__create_segment_configs_widget"):
+            self.__create_segment_configs_widget = segment_configs_widget()
+            self.__create_segment_configs_widget_native = (
+                self.__create_segment_configs_widget.native
             )
-        return self.__create_inference_configs_widget_native
+        return self.__create_segment_configs_widget_native
 
     def get_selected_axes(self):
         names = []
@@ -302,8 +313,7 @@ class SegmentationWidget(QScrollArea):
                 "downsampling_layers": 1,
                 "initialize": True,
             }
-
-        self.update_mode()
+        self.update_mode(self.sender())
 
         if self.mode == "training":
             self.worker = self.train_napari()
@@ -322,20 +332,34 @@ class SegmentationWidget(QScrollArea):
             torch.save(state, filename)
             self.worker.quit()
 
-    def update_mode(self):
+    def update_mode(self, sender):
 
-        if self.train_button.text() == "Train!":
-            self.train_button.setText("Pause!")
+        if self.train_button.text() == "Train" and sender == self.train_button:
+            self.train_button.setText("Pause")
             self.mode = "training"
-        elif self.train_button.text() == "Pause!":
-            self.train_button.setText("Train!")
+        elif (
+            self.train_button.text() == "Pause" and sender == self.train_button
+        ):
+            self.train_button.setText("Train")
+            self.mode = "configuring"
+        elif (
+            self.segment_button.text() == "Segment"
+            and sender == self.segment_button
+        ):
+            self.segment_button.setText("Pause")
+            self.mode = "segmenting"
+        elif (
+            self.segment_button.text() == "Pause"
+            and sender == self.segment_button
+        ):
+            self.segment_button.setText("Segment")
             self.mode = "configuring"
 
     @thread_worker
     def train_napari(self):
 
         # Turn layer into dataset
-        train_dataset = NapariDataset(
+        self.dataset = NapariDataset(
             layer=self.raw_selector.value,
             axis_names=self.get_selected_axes(),
             crop_size=self.train_config["crop_size"],
@@ -347,8 +371,8 @@ class SegmentationWidget(QScrollArea):
             os.makedirs("models")
 
         # create train dataloader
-        train_dataloader = torch.utils.data.DataLoader(
-            dataset=train_dataset,
+        self.dataloader = torch.utils.data.DataLoader(
+            dataset=self.dataset,
             batch_size=self.train_config["batch_size"],
             drop_last=True,
             num_workers=self.train_config["num_workers"],
@@ -359,20 +383,20 @@ class SegmentationWidget(QScrollArea):
             [
                 self.model_config["downsampling_factors"],
             ]
-            * train_dataset.get_num_spatial_dims()
+            * self.dataset.get_num_spatial_dims()
         ] * self.model_config["downsampling_layers"]
 
         # set model
         self.model = get_model(
-            in_channels=train_dataset.get_num_channels(),
-            out_channels=train_dataset.get_num_spatial_dims(),
+            in_channels=self.dataset.get_num_channels(),
+            out_channels=self.dataset.get_num_spatial_dims(),
             num_fmaps=self.model_config["num_fmaps"],
             fmap_inc_factor=self.model_config["fmap_inc_factor"],
             features_in_last_layer=self.model_config["features_in_last_layer"],
             downsampling_factors=[
                 tuple(factor) for factor in downsampling_factors
             ],
-            num_spatial_dims=train_dataset.get_num_spatial_dims(),
+            num_spatial_dims=self.dataset.get_num_spatial_dims(),
         )
 
         # set device
@@ -394,7 +418,7 @@ class SegmentationWidget(QScrollArea):
             temperature=self.train_config["temperature"],
             kappa=self.train_config["kappa"],
             density=self.train_config["density"],
-            num_spatial_dims=train_dataset.get_num_spatial_dims(),
+            num_spatial_dims=self.dataset.get_num_spatial_dims(),
             reduce_mean=self.train_config["reduce_mean"],
             device=device,
         )
@@ -432,7 +456,7 @@ class SegmentationWidget(QScrollArea):
         # call `train_iteration`
         for iteration, batch in zip(
             range(start_iteration, self.train_config["max_iterations"]),
-            train_dataloader,
+            self.dataloader,
         ):
             scheduler = torch.optim.lr_scheduler.LambdaLR(
                 self.optimizer, lr_lambda=lambda_, last_epoch=iteration - 1
@@ -449,12 +473,15 @@ class SegmentationWidget(QScrollArea):
             yield (iteration, train_loss)
 
     def on_yield(self, step_data):
-        # TODO
-        iteration, loss = step_data
-        print(iteration, loss)
-        self.iterations.append(iteration)
-        self.losses.append(loss)
-        self.update_canvas()
+        if self.mode == "training":
+            iteration, loss = step_data
+            print(iteration, loss)
+            self.iterations.append(iteration)
+            self.losses.append(loss)
+            self.update_canvas()
+        elif self.mode == "segmenting":
+            print(step_data)
+            self.pbar.setValue(step_data)
 
     def update_canvas(self):
         self.loss_plot.set_xdata(self.iterations)
@@ -467,4 +494,194 @@ class SegmentationWidget(QScrollArea):
         pass  # TODO
 
     def prepare_for_segmenting(self):
-        pass
+        # check if segment_config exists
+        if self.segment_config is None:
+            self.segment_config = {
+                "crop_size": 252,
+                "p_salt_pepper": 0.1,
+                "num_infer_iterations": 16,
+                "bandwidth": None,
+                "reduction_probability": 0.1,
+                "min_size": None,
+                "grow_distance": 3,
+                "shrink_distance": 6,
+            }
+
+        # update mode
+        self.update_mode(self.sender())
+
+        if self.mode == "segmenting":
+            self.worker = self.segment_napari()
+            self.worker.yielded.connect(self.on_yield)
+            self.worker.returned.connect(self.on_return)
+            self.worker.start()
+        elif self.mode == "configuring":
+            self.worker.quit()
+
+    @thread_worker
+    def segment_napari(self):
+        raw = self.raw_selector.value
+
+        if self.segment_config["bandwidth"] is None:
+            self.segment_config["bandwidth"] = int(
+                0.5 * float(self.object_size_line.text())
+            )
+        if self.segment_config["min_size"] is None:
+            self.segment_config["min_size"] = int(
+                0.1 * np.pi * (float(self.object_size_line.text()) ** 2) / 4
+            )
+        self.model.eval()
+
+        num_spatial_dims = self.dataset.num_spatial_dims
+        num_channels = self.dataset.num_channels
+        spatial_dims = self.dataset.spatial_dims
+        num_samples = self.dataset.num_samples
+
+        print(
+            f"Num spatial dims {num_spatial_dims} num channels {num_channels} spatial_dims {spatial_dims} num_samples {num_samples}"
+        )
+
+        crop_size = (self.segment_config["crop_size"],) * num_spatial_dims
+        device = self.train_config["device"]
+
+        if num_channels == 0:
+            num_channels = 1
+
+        voxel_size = gp.Coordinate((1,) * num_spatial_dims)
+        self.model.set_infer(
+            p_salt_pepper=self.segment_config["p_salt_pepper"],
+            num_infer_iterations=self.segment_config["num_infer_iterations"],
+            device=device,
+        )
+
+        print(f"Current device is {device}")
+
+        input_shape = gp.Coordinate((1, num_channels, *crop_size))
+        output_shape = gp.Coordinate(
+            self.model(
+                torch.zeros(
+                    (1, num_channels, *crop_size), dtype=torch.float32
+                ).to(device)
+            ).shape
+        )
+        input_size = (
+            gp.Coordinate(input_shape[-num_spatial_dims:]) * voxel_size
+        )
+        output_size = (
+            gp.Coordinate(output_shape[-num_spatial_dims:]) * voxel_size
+        )
+        context = (input_size - output_size) / 2
+
+        raw_key = gp.ArrayKey("RAW")
+        prediction_key = gp.ArrayKey("PREDICT")
+        scan_request = gp.BatchRequest()
+        scan_request.add(raw_key, input_size)
+        scan_request.add(prediction_key, output_size)
+
+        predict = gp.torch.Predict(
+            self.model,
+            inputs={"raw": raw_key},
+            outputs={0: prediction_key},
+            array_specs={prediction_key: gp.ArraySpec(voxel_size=voxel_size)},
+        )
+        pipeline = NapariImageSource(
+            raw,
+            raw_key,
+            gp.ArraySpec(
+                gp.Roi(
+                    (0,) * num_spatial_dims,
+                    raw.data.shape[-num_spatial_dims:],
+                ),
+                voxel_size=voxel_size,
+            ),
+            spatial_dims,
+        )
+
+        if num_samples == 0 and num_channels == 0:
+            pipeline += (
+                gp.Pad(raw_key, context)
+                + gp.Unsqueeze([raw_key], 0)
+                + gp.Unsqueeze([raw_key], 0)
+                + predict
+                + gp.Scan(scan_request)
+            )
+        elif num_samples != 0 and num_channels == 0:
+            pipeline += (
+                gp.Pad(raw_key, context)
+                + gp.Unsqueeze([raw_key], 1)
+                + predict
+                + gp.Scan(scan_request)
+            )
+        elif num_samples == 0 and num_channels != 0:
+            pipeline += (
+                gp.Pad(raw_key, context)
+                + gp.Unsqueeze([raw_key], 0)
+                + predict
+                + gp.Scan(scan_request)
+            )
+        elif num_samples != 0 and num_channels != 0:
+            pipeline += (
+                gp.Pad(raw_key, context) + predict + gp.Scan(scan_request)
+            )
+
+        # request to pipeline for ROI of whole image/volume
+        request = gp.BatchRequest()
+        request.add(prediction_key, raw.data.shape[-num_spatial_dims:])
+        counter = 0
+        with gp.build(pipeline):
+            batch = pipeline.request_batch(request)
+            yield counter
+            counter += 0.1
+
+        prediction = batch.arrays[prediction_key].data
+        colormaps = ["red", "green", "blue"]
+        prediction_layers = [
+            (
+                prediction[:, i : i + 1, ...].copy(),
+                {
+                    "name": "offset-" + "zyx"[num_spatial_dims - i]
+                    if i < num_spatial_dims
+                    else "std",
+                    "colormap": colormaps[num_spatial_dims - i]
+                    if i < num_spatial_dims
+                    else "gray",
+                    "blending": "additive",
+                },
+                "image",
+            )
+            for i in range(num_spatial_dims + 1)
+        ]
+
+        labels = np.zeros_like(prediction[:, 0:1, ...].data, dtype=np.uint64)
+        for sample in range(num_samples):
+            embeddings = prediction[sample]
+            embeddings_std = embeddings[-1, ...]
+            embeddings_mean = embeddings[np.newaxis, :num_spatial_dims, ...]
+            segmentation = mean_shift_segmentation(
+                embeddings_mean,
+                embeddings_std,
+                self.segment_config["bandwidth"],
+                self.segment_config["min_size"],
+                self.segment_config["reduction_probability"],
+            )
+            labels[sample, 0, ...] = segmentation
+
+        pp_labels = np.zeros_like(
+            prediction[:, 0:1, ...].data, dtype=np.uint64
+        )
+        for sample in range(num_samples):
+            segmentation = labels[sample, 0]
+            distance_foreground = dtedt(segmentation == 0)
+            expanded_mask = (
+                distance_foreground < self.inference_config["grow_distance"]
+            )
+            distance_background = dtedt(expanded_mask)
+            segmentation[
+                distance_background < self.inference_config["shrink_distance"]
+            ] = 0
+            pp_labels[sample, 0, ...] = segmentation
+        return (
+            prediction_layers
+            + [(labels, {"name": "Segmentation"}, "labels")]
+            + [(pp_labels, {"name": "Post Processed"}, "labels")]
+        )
