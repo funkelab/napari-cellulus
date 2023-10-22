@@ -1,4 +1,5 @@
 import os
+import time
 
 import gunpowder as gp
 import napari
@@ -36,6 +37,9 @@ from ..gp.nodes.napari_image_source import NapariImageSource
 
 # local package imports
 from ..gui_helpers import MplCanvas, layer_choice_widget
+
+############ GLOBALS ###################
+time_now = 0
 
 
 class SegmentationWidget(QScrollArea):
@@ -474,8 +478,14 @@ class SegmentationWidget(QScrollArea):
 
     def on_yield(self, step_data):
         if self.mode == "training":
+            global time_now
             iteration, loss = step_data
-            print(iteration, loss)
+            current_time = time.time()
+            time_elapsed = current_time - time_now
+            time_now = current_time
+            print(
+                f"iteration {iteration}, loss {loss}, seconds/iteration {time_elapsed}"
+            )
             self.iterations.append(iteration)
             self.losses.append(loss)
             self.update_canvas()
