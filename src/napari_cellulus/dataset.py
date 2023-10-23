@@ -94,7 +94,6 @@ class NapariDataset(IterableDataset):  # type: ignore
                 NapariImageSource(
                     self.layer, self.raw, raw_spec, self.spatial_dims
                 )
-                + gp.Unsqueeze([self.raw], 1)
                 + gp.RandomLocation()
                 + gp.Unsqueeze([self.raw], 1)
             )
