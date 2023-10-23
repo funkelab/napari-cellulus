@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 from scipy.ndimage import distance_transform_edt as dtedt
+from skimage.filters import threshold_otsu
 from superqt import QCollapsible
 
 from ..dataset import NapariDataset
@@ -367,9 +368,9 @@ class SegmentationWidget(QScrollArea):
                 "downsampling_layers": 1,
                 "initialize": True,
             }
-        self.update_mode(self.sender())
 
-        print(_model_config)
+        print(self.sender())
+        self.update_mode(self.sender())
 
         if self.mode == "training":
             self.worker = self.train_napari()
@@ -554,8 +555,15 @@ class SegmentationWidget(QScrollArea):
         self.canvas.axes.autoscale_view()
         self.canvas.draw()
 
-    def on_return(self):
-        pass  # TODO
+    def on_return(self, layers):
+        # Describes what happens once segment button has completed
+
+        for data, metadata, layer_type in layers:
+            if layer_type == "image":
+                self.viewer.add_image(data, **metadata)
+            elif layer_type == "labels":
+                self.viewer.add_labels(data.astype(int), **metadata)
+        self.update_mode(self.segment_button)
 
     def prepare_for_segmenting(self):
         global _segment_config
@@ -611,8 +619,7 @@ class SegmentationWidget(QScrollArea):
         crop_size = (_segment_config["crop_size"],) * num_spatial_dims
         device = self.device_combo_box.currentText()
 
-        if num_channels == 0:
-            num_channels = 1
+        num_channels_temp = 1 if num_channels == 0 else num_channels
 
         voxel_size = gp.Coordinate((1,) * num_spatial_dims)
         _model.set_infer(
@@ -621,13 +628,11 @@ class SegmentationWidget(QScrollArea):
             device=device,
         )
 
-        print(f"Current device is {device}")
-
-        input_shape = gp.Coordinate((1, num_channels, *crop_size))
+        input_shape = gp.Coordinate((1, num_channels_temp, *crop_size))
         output_shape = gp.Coordinate(
             _model(
                 torch.zeros(
-                    (1, num_channels, *crop_size), dtype=torch.float32
+                    (1, num_channels_temp, *crop_size), dtype=torch.float32
                 ).to(device)
             ).shape
         )
@@ -719,8 +724,17 @@ class SegmentationWidget(QScrollArea):
             for i in range(num_spatial_dims + 1)
         ]
 
-        labels = np.zeros_like(prediction[:, 0:1, ...].data, dtype=np.uint64)
-        for sample in range(num_samples):
+        foreground = np.zeros_like(prediction[:, 0:1, ...], dtype=bool)
+        for sample in range(prediction.shape[0]):
+            embeddings = prediction[sample]
+            embeddings_std = embeddings[-1, ...]
+            thresh = threshold_otsu(embeddings_std)
+            print(f"Threshold for sample {sample} is {thresh}")
+            binary_mask = embeddings_std < thresh
+            foreground[sample, 0, ...] = binary_mask
+
+        labels = np.zeros_like(prediction[:, 0:1, ...], dtype=np.uint64)
+        for sample in range(prediction.shape[0]):
             embeddings = prediction[sample]
             embeddings_std = embeddings[-1, ...]
             embeddings_mean = embeddings[np.newaxis, :num_spatial_dims, ...]
@@ -733,10 +747,8 @@ class SegmentationWidget(QScrollArea):
             )
             labels[sample, 0, ...] = segmentation
 
-        pp_labels = np.zeros_like(
-            prediction[:, 0:1, ...].data, dtype=np.uint64
-        )
-        for sample in range(num_samples):
+        pp_labels = np.zeros_like(prediction[:, 0:1, ...], dtype=np.uint64)
+        for sample in range(prediction.shape[0]):
             segmentation = labels[sample, 0]
             distance_foreground = dtedt(segmentation == 0)
             expanded_mask = (
@@ -749,6 +761,7 @@ class SegmentationWidget(QScrollArea):
             pp_labels[sample, 0, ...] = segmentation
         return (
             prediction_layers
+            + [(foreground, {"name": "Foreground"}, "labels")]
             + [(labels, {"name": "Segmentation"}, "labels")]
             + [(pp_labels, {"name": "Post Processed"}, "labels")]
         )
