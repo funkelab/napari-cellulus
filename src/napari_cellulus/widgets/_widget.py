@@ -232,8 +232,9 @@ class SegmentationWidget(QScrollArea):
             control_point_spacing: int = 64,
             control_point_jitter: float = 2.0,
         ):
+            global _train_config
             # Specify what should happen when 'Save' button is pressed
-            self.train_config = {
+            _train_config = {
                 "crop_size": crop_size,
                 "batch_size": batch_size,
                 "max_iterations": max_iterations,
@@ -259,15 +260,16 @@ class SegmentationWidget(QScrollArea):
     def create_model_configs_widget(self):
         @magic_factory(call_button="Save")
         def model_configs_widget(
-            num_fmaps: int = 256,
+            num_fmaps: int = 24,
             fmap_inc_factor: int = 3,
             features_in_last_layer: int = 64,
             downsampling_factors: int = 2,
             downsampling_layers: int = 1,
             initialize: bool = True,
         ):
+            global _model_config
             # Specify what should happen when 'Save' button is pressed
-            self.model_config = {
+            _model_config = {
                 "num_fmaps": num_fmaps,
                 "fmap_inc_factor": fmap_inc_factor,
                 "features_in_last_layer": features_in_last_layer,
@@ -296,8 +298,9 @@ class SegmentationWidget(QScrollArea):
             grow_distance: int = 3,
             shrink_distance: int = 6,
         ):
+            global _segment_config
             # Specify what should happen when 'Save' button is pressed
-            self.segment_config = {
+            _segment_config = {
                 "crop_size": crop_size,
                 "p_salt_pepper": p_salt_pepper,
                 "num_infer_iterations": num_infer_iterations,
@@ -357,7 +360,7 @@ class SegmentationWidget(QScrollArea):
         # check if model_config object exists
         if _model_config is None:
             _model_config = {
-                "num_fmaps": 256,
+                "num_fmaps": 24,
                 "fmap_inc_factor": 3,
                 "features_in_last_layer": 64,
                 "downsampling_factors": 2,
@@ -365,6 +368,8 @@ class SegmentationWidget(QScrollArea):
                 "initialize": True,
             }
         self.update_mode(self.sender())
+
+        print(_model_config)
 
         if self.mode == "training":
             self.worker = self.train_napari()
@@ -540,7 +545,7 @@ class SegmentationWidget(QScrollArea):
             self.update_canvas()
         elif self.mode == "segmenting":
             print(step_data)
-            self.pbar.setValue(step_data)
+            # self.pbar.setValue(step_data)
 
     def update_canvas(self):
         self.loss_plot.set_xdata(self.iterations)
