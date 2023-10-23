@@ -1,4 +1,3 @@
-import dataclasses
 import os
 import time
 
@@ -38,24 +37,6 @@ from ..gp.nodes.napari_image_source import NapariImageSource
 
 # local package imports
 from ..gui_helpers import MplCanvas, layer_choice_widget
-
-
-@dataclasses.dataclass
-class TrainingStats:
-    iteration: int = 0
-    losses: list[float] = dataclasses.field(default_factory=list)
-    iterations: list[int] = dataclasses.field(default_factory=list)
-
-    def reset(self):
-        self.iteration = 0
-        self.losses = []
-        self.iterations = []
-
-    def load(self, other):
-        self.iteration = other.iteration
-        self.losses = other.losses
-        self.iterations = other.iterations
-
 
 ############ GLOBALS ###################
 time_now = 0
