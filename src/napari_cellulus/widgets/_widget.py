@@ -394,23 +394,27 @@ class SegmentationWidget(QScrollArea):
         if self.train_button.text() == "Train" and sender == self.train_button:
             self.train_button.setText("Pause")
             self.mode = "training"
+            self.segment_button.setEnabled(False)
         elif (
             self.train_button.text() == "Pause" and sender == self.train_button
         ):
             self.train_button.setText("Train")
             self.mode = "configuring"
+            self.segment_button.setEnabled(True)
         elif (
             self.segment_button.text() == "Segment"
             and sender == self.segment_button
         ):
             self.segment_button.setText("Pause")
             self.mode = "segmenting"
+            self.train_button.setEnabled(False)
         elif (
             self.segment_button.text() == "Pause"
             and sender == self.segment_button
         ):
             self.segment_button.setText("Segment")
             self.mode = "configuring"
+            self.train_button.setEnabled(True)
 
     @thread_worker
     def train_napari(self):
