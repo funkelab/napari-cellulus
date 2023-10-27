@@ -556,7 +556,7 @@ class SegmentationWidget(QScrollArea):
         if _segment_config is None:
             _segment_config = {
                 "crop_size": 252,
-                "p_salt_pepper": 0.1,
+                "p_salt_pepper": 0.01,
                 "num_infer_iterations": 16,
                 "bandwidth": None,
                 "reduction_probability": 0.1,
