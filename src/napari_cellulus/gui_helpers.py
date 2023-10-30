@@ -6,7 +6,7 @@ from matplotlib.backends.backend_qt5agg import (
     NavigationToolbar2QT as NavigationToolbar,
 )
 from matplotlib.figure import Figure
-from PyQt5 import QtWidgets
+from qtpy import QtWidgets
 
 
 class MplCanvas(FigureCanvasQTAgg):

@@ -1,13 +1,12 @@
-import math
-from typing import Tuple, List
+from typing import List
 
 import gunpowder as gp
+import numpy as np
 from napari.layers import Image
 from torch.utils.data import IterableDataset
 
 from .gp.nodes.napari_image_source import NapariImageSource
-
-from cellulus.datasets import DatasetMetaData
+from .meta_data import NapariDatasetMetaData
 
 
 class NapariDataset(IterableDataset):  # type: ignore
@@ -15,7 +14,7 @@ class NapariDataset(IterableDataset):  # type: ignore
         self,
         layer: Image,
         axis_names: List[str],
-        crop_size: Tuple[int, ...],
+        crop_size: int,
         control_point_spacing: int,
         control_point_jitter: float,
     ):
@@ -58,17 +57,11 @@ class NapariDataset(IterableDataset):  # type: ignore
 
         self.layer = layer
         self.axis_names = axis_names
-        self.crop_size = crop_size
         self.control_point_spacing = control_point_spacing
         self.control_point_jitter = control_point_jitter
         self.__read_meta_data()
-
-        assert len(crop_size) == self.num_spatial_dims, (
-            f'"crop_size" must have the same dimension as the '
-            f'spatial(temporal) dimensions of the "{self.layer.name}"'
-            f"layer which is {self.num_spatial_dims}, but it is {crop_size}"
-        )
-
+        print(f"Number of spatial dims is {self.num_spatial_dims}")
+        self.crop_size = (crop_size,) * self.num_spatial_dims
         self.__setup_pipeline()
 
     def __iter__(self):
@@ -76,22 +69,49 @@ class NapariDataset(IterableDataset):  # type: ignore
 
     def __setup_pipeline(self):
         self.raw = gp.ArrayKey("RAW")
-
-        self.pipeline = (
-            NapariImageSource(self.layer, self.raw)
-            + gp.RandomLocation()
-            + gp.ElasticAugment(
-                control_point_spacing=(self.control_point_spacing,)
-                * self.num_spatial_dims,
-                jitter_sigma=(self.control_point_jitter,)
-                * self.num_spatial_dims,
-                rotation_interval=(0, math.pi / 2),
-                scale_interval=(0.9, 1.1),
-                subsample=4,
-                spatial_dims=self.num_spatial_dims,
-            )
-            # + gp.SimpleAugment(mirror_only=spatial_dims, transpose_only=spatial_dims)
+        # treat all dimensions as spatial, with a voxel size = 1
+        voxel_size = gp.Coordinate((1,) * self.num_dims)
+        offset = gp.Coordinate((0,) * self.num_dims)
+        shape = gp.Coordinate(self.layer.data.shape)
+        raw_spec = gp.ArraySpec(
+            roi=gp.Roi(offset, voxel_size * shape),
+            dtype=np.float32,
+            interpolatable=True,
+            voxel_size=voxel_size,
         )
+
+        if self.num_channels == 0 and self.num_samples == 0:
+            self.pipeline = (
+                NapariImageSource(
+                    self.layer, self.raw, raw_spec, self.spatial_dims
+                )
+                + gp.RandomLocation()
+                + gp.Unsqueeze([self.raw], 0)
+                + gp.Unsqueeze([self.raw], 0)
+            )
+        elif self.num_channels == 0 and self.num_samples != 0:
+            self.pipeline = (
+                NapariImageSource(
+                    self.layer, self.raw, raw_spec, self.spatial_dims
+                )
+                + gp.RandomLocation()
+                + gp.Unsqueeze([self.raw], 1)
+            )
+        elif self.num_channels != 0 and self.num_samples == 0:
+            self.pipeline = (
+                NapariImageSource(
+                    self.layer, self.raw, raw_spec, self.spatial_dims
+                )
+                + gp.RandomLocation()
+                + gp.Unsqueeze([self.raw], 0)
+            )
+        elif self.num_channels != 0 and self.num_samples != 0:
+            self.pipeline = (
+                NapariImageSource(
+                    self.layer, self.raw, raw_spec, self.spatial_dims
+                )
+                + gp.RandomLocation()
+            )
 
     def __yield_sample(self):
         """An infinite generator of crops."""
@@ -100,18 +120,40 @@ class NapariDataset(IterableDataset):  # type: ignore
             while True:
                 # request one sample, all channels, plus crop dimensions
                 request = gp.BatchRequest()
-                request[self.raw] = gp.ArraySpec(
-                    roi=gp.Roi(
-                        (0,) * self.num_dims,
-                        (1, self.num_channels, *self.crop_size),
+                if self.num_channels == 0 and self.num_samples == 0:
+                    request[self.raw] = gp.ArraySpec(
+                        roi=gp.Roi(
+                            (0,) * (self.num_dims),
+                            self.crop_size,
+                        )
                     )
-                )
-
+                elif self.num_channels == 0 and self.num_samples != 0:
+                    request[self.raw] = gp.ArraySpec(
+                        roi=gp.Roi(
+                            (0,) * (self.num_dims), (1, *self.crop_size)
+                        )
+                    )
+                elif self.num_channels != 0 and self.num_samples == 0:
+                    request[self.raw] = gp.ArraySpec(
+                        roi=gp.Roi(
+                            (0,) * (self.num_dims),
+                            (self.num_channels, *self.crop_size),
+                        )
+                    )
+                elif self.num_channels != 0 and self.num_samples != 0:
+                    request[self.raw] = gp.ArraySpec(
+                        roi=gp.Roi(
+                            (0,) * (self.num_dims),
+                            (1, self.num_channels, *self.crop_size),
+                        )
+                    )
                 sample = self.pipeline.request_batch(request)
                 yield sample[self.raw].data[0]
 
     def __read_meta_data(self):
-        meta_data = DatasetMetaData(self.layer.data.shape, self.axis_names)
+        meta_data = NapariDatasetMetaData(
+            self.layer.data.shape, self.axis_names
+        )
 
         self.num_dims = meta_data.num_dims
         self.num_spatial_dims = meta_data.num_spatial_dims
@@ -120,9 +162,10 @@ class NapariDataset(IterableDataset):  # type: ignore
         self.sample_dim = meta_data.sample_dim
         self.channel_dim = meta_data.channel_dim
         self.time_dim = meta_data.time_dim
+        self.spatial_dims = meta_data.spatial_dims
 
     def get_num_channels(self):
-        return self.num_channels
+        return 1 if self.num_channels == 0 else self.num_channels
 
     def get_num_spatial_dims(self):
         return self.num_spatial_dims
