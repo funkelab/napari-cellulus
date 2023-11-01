@@ -32,6 +32,7 @@ from qtpy.QtWidgets import (
 from scipy.ndimage import distance_transform_edt as dtedt
 from skimage.filters import threshold_otsu
 from superqt import QCollapsible
+from torch import nn
 
 from ..dataset import NapariDataset
 from ..gp.nodes.napari_image_source import NapariImageSource
@@ -48,6 +49,25 @@ _model = None
 _optimizer = None
 _scheduler = None
 _dataset = None
+
+
+class Model(nn.Module):
+    def __init__(self, model, selected_axes):
+        super().__init__()
+        self.model = model
+        self.selected_axes = selected_axes
+
+    def forward(self, x):
+        if "s" in self.selected_axes and "c" in self.selected_axes:
+            pass
+        elif "s" in self.selected_axes and "c" not in self.selected_axes:
+            x = torch.unsqueeze(x, 1)
+        elif "s" not in self.selected_axes and "c" in self.selected_axes:
+            pass
+        elif "s" not in self.selected_axes and "c" not in self.selected_axes:
+            x = torch.unsqueeze(x, 1)
+
+        return self.model(x)
 
 
 class SegmentationWidget(QMainWindow):
@@ -112,16 +132,6 @@ class SegmentationWidget(QMainWindow):
         styles = {"color": "white", "font-size": "16px"}
         self.losses_widget.setLabel("left", "Loss", **styles)
         self.losses_widget.setLabel("bottom", "Iterations", **styles)
-        # self.canvas = MplCanvas(self, width=5, height=10, dpi=100)
-        # canvas_layout = QVBoxLayout()
-        # canvas_layout.addWidget(self.canvas)
-        # if len(self.iterations) == 0:
-        #    self.loss_plot = self.canvas.axes.plot([], [], label="")[0]
-        #    self.canvas.axes.legend()
-        #    self.canvas.axes.set_xlabel("Iterations")
-        #    self.canvas.axes.set_ylabel("Loss")
-        # plot_container_widget = QWidget()
-        # plot_container_widget.setLayout(canvas_layout)
 
         # Initialize Layer Choice
         self.raw_selector = layer_choice_widget(
@@ -361,7 +371,6 @@ class SegmentationWidget(QMainWindow):
                 "initialize": True,
             }
 
-        print(self.sender())
         self.update_mode(self.sender())
 
         if self.mode == "training":
@@ -442,7 +451,7 @@ class SegmentationWidget(QMainWindow):
         ] * _model_config["downsampling_layers"]
 
         # set model
-        _model = get_model(
+        _model_orig = get_model(
             in_channels=_dataset.get_num_channels(),
             out_channels=_dataset.get_num_spatial_dims(),
             num_fmaps=_model_config["num_fmaps"],
@@ -453,6 +462,9 @@ class SegmentationWidget(QMainWindow):
             ],
             num_spatial_dims=_dataset.get_num_spatial_dims(),
         )
+
+        # put a wrapper around the model
+        _model = Model(_model_orig, self.get_selected_axes())
 
         # set device
         device = torch.device(self.device_combo_box.currentText())

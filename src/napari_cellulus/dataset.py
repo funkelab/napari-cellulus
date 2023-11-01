@@ -60,7 +60,6 @@ class NapariDataset(IterableDataset):  # type: ignore
         self.control_point_spacing = control_point_spacing
         self.control_point_jitter = control_point_jitter
         self.__read_meta_data()
-        print(f"Number of spatial dims is {self.num_spatial_dims}")
         self.crop_size = (crop_size,) * self.num_spatial_dims
         self.__setup_pipeline()
 
@@ -79,33 +78,15 @@ class NapariDataset(IterableDataset):  # type: ignore
             interpolatable=True,
             voxel_size=voxel_size,
         )
-
-        if self.num_channels == 0 and self.num_samples == 0:
+        if self.num_samples == 0:
             self.pipeline = (
                 NapariImageSource(
                     self.layer, self.raw, raw_spec, self.spatial_dims
                 )
-                + gp.RandomLocation()
                 + gp.Unsqueeze([self.raw], 0)
-                + gp.Unsqueeze([self.raw], 0)
-            )
-        elif self.num_channels == 0 and self.num_samples != 0:
-            self.pipeline = (
-                NapariImageSource(
-                    self.layer, self.raw, raw_spec, self.spatial_dims
-                )
                 + gp.RandomLocation()
-                + gp.Unsqueeze([self.raw], 1)
             )
-        elif self.num_channels != 0 and self.num_samples == 0:
-            self.pipeline = (
-                NapariImageSource(
-                    self.layer, self.raw, raw_spec, self.spatial_dims
-                )
-                + gp.RandomLocation()
-                + gp.Unsqueeze([self.raw], 0)
-            )
-        elif self.num_channels != 0 and self.num_samples != 0:
+        else:
             self.pipeline = (
                 NapariImageSource(
                     self.layer, self.raw, raw_spec, self.spatial_dims
