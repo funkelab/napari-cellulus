@@ -6,11 +6,12 @@ import napari
 import numpy as np
 import pyqtgraph as pg
 import torch
+from cellulus.configs.model_config import InferenceConfig, ModelConfig
+from cellulus.configs.train_config import TrainConfig
 from cellulus.criterions import get_loss
 from cellulus.models import get_model
 from cellulus.train import train_iteration
 from cellulus.utils.mean_shift import mean_shift_segmentation
-from magicgui import magic_factory
 
 # widget stuff
 from napari.qt.threading import thread_worker
@@ -19,6 +20,7 @@ from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -43,13 +45,13 @@ from ..gui_helpers import layer_choice_widget
 
 ############ GLOBALS ###################
 time_now = 0
-_train_config = None
-_model_config = None
-_segment_config = None
-_model = None
-_optimizer = None
-_scheduler = None
-_dataset = None
+train_config = None
+model_config = None
+segment_config = None
+model = None
+optimizer = None
+scheduler = None
+dataset = None
 
 
 class Model(nn.Module):
@@ -244,13 +246,16 @@ class SegmentationWidget(QMainWindow):
 
         # Initialize save/load model
 
-        save_model_button = QPushButton(self)
-        save_model_button.setText("Save Model")
-        load_model_button = QPushButton(self)
-        load_model_button.setText("Load Model")
+        self.save_model_button = QPushButton(self)
+        self.save_model_button.setText("Save Model")
+        self.save_model_button.clicked.connect(self.save_model_weights)
+        self.load_model_button = QPushButton(self)
+        self.load_model_button.setText("Load Model")
+        self.load_model_button.clicked.connect(self.get_model_weights)
+
         grid_4 = QGridLayout()
-        grid_4.addWidget(save_model_button, 0, 0, 1, 1)
-        grid_4.addWidget(load_model_button, 0, 1, 1, 1)
+        grid_4.addWidget(self.save_model_button, 0, 0, 1, 1)
+        grid_4.addWidget(self.load_model_button, 0, 1, 1, 1)
         save_load_widget = QWidget()
         save_load_widget.setLayout(grid_4)
         collapsible_save_load_widget.addWidget(save_load_widget)
@@ -318,47 +323,13 @@ class SegmentationWidget(QMainWindow):
         self.setFixedWidth(400)
         self.setCentralWidget(self.scroll)
 
-    @property
-    def create_segment_configs_widget(self):
-        @magic_factory(call_button="Save")
-        def segment_configs_widget(
-            crop_size: int = 252,
-            p_salt_pepper: float = 0.01,
-            num_infer_iterations: int = 16,
-            bandwidth: int = 7,
-            reduction_probability: float = 0.1,
-            min_size: int = 25,
-            grow_distance: int = 3,
-            shrink_distance: int = 6,
-        ):
-            global _segment_config
-            # Specify what should happen when 'Save' button is pressed
-            _segment_config = {
-                "crop_size": crop_size,
-                "p_salt_pepper": p_salt_pepper,
-                "num_infer_iterations": num_infer_iterations,
-                "bandwidth": bandwidth,
-                "reduction_probability": reduction_probability,
-                "min_size": min_size,
-                "grow_distance": grow_distance,
-                "shrink_distance": shrink_distance,
-            }
-
-        if not hasattr(self, "__create_segment_configs_widget"):
-            self.__create_segment_configs_widget = segment_configs_widget()
-            self.__create_segment_configs_widget_native = (
-                self.__create_segment_configs_widget.native
-            )
-        return self.__create_segment_configs_widget_native
-
     def get_selected_axes(self):
         names = []
         for name, checkbox in zip(
-            "sctzyx",
+            "sczyx",
             [
                 self.s_checkbox,
                 self.c_checkbox,
-                self.t_checkbox,
                 self.z_checkbox,
                 self.y_checkbox,
                 self.x_checkbox,
@@ -368,51 +339,60 @@ class SegmentationWidget(QMainWindow):
                 names.append(name)
         return names
 
+    def get_model_weights(self):
+
+        self.update_mode(self.sender)
+        global model_config
+        fname, _ = QFileDialog.getOpenFileName(
+            self, "Browse to model weights", "models/last.pth"
+        )
+        model_config.checkpoint = fname
+
+    def save_model_weights(self):
+
+        global model, optimizer
+        self.update_mode(self.sender())
+        QFileDialog.getSaveFileName(self, "Save model weights")
+        # if self.mode =='configuring':
+        #    state = {
+        #        "iteration": self.iterations[-1],
+        #        "model_state_dict": model.state_dict(),
+        #        "optim_state_dict": optimizer.state_dict(),
+        #        "iterations": self.iterations,
+        #        "losses": self.losses,
+        #    }
+        #    torch.save(state, filename)
+        #    self.worker.quit()
+
     def prepare_for_training(self):
 
-        # check if train_config object exists
-        global _train_config, _model_config, _model, _optimizer
+        global model, optimizer, model_config
 
-        if _train_config is None:
-            # set default values
-            _train_config = {
-                "crop_size": 252,
-                "batch_size": 8,
-                "max_iterations": 100_000,
-                "initial_learning_rate": 4e-5,
-                "temperature": 10.0,
-                "regularizer_weight": 1e-5,
-                "reduce_mean": True,
-                "density": 0.1,
-                "kappa": 10.0,
-                "num_workers": 8,
-                "control_point_spacing": 64,
-                "control_point_jitter": 2.0,
-            }
-
-        # check if model_config object exists
-        if _model_config is None:
-            _model_config = {
-                "num_fmaps": 24,
-                "fmap_inc_factor": 3,
-                "features_in_last_layer": 64,
-                "downsampling_factors": 2,
-                "downsampling_layers": 1,
-                "initialize": True,
-            }
+        train_config = TrainConfig(
+            crop_size=[
+                int(self.crop_size_line.text())
+            ],  # this is correctly handled in the dataset class
+            batch_size=int(self.batch_size_line.text()),
+            max_iterations=int(self.max_iterations_line.text()),
+            device=self.device_combo_box.currentText(),
+        )
+        model_config = ModelConfig(
+            num_fmaps=int(self.fmaps_line.text()),
+            fmap_inc_factor=int(self.fmaps_increase_line.text()),
+        )
 
         self.update_mode(self.sender())
 
         if self.mode == "training":
-            self.worker = self.train_napari()
+            self.worker = self.train_napari(train_config, model_config)
             self.worker.yielded.connect(self.on_yield)
             self.worker.returned.connect(self.on_return)
             self.worker.start()
         elif self.mode == "configuring":
             state = {
                 "iteration": self.iterations[-1],
-                "model_state_dict": _model.state_dict(),
-                "optim_state_dict": _optimizer.state_dict(),
+                "model_state_dict": model.state_dict(),
+                "optim_state_dict": optimizer.state_dict(),
                 "iterations": self.iterations,
                 "losses": self.losses,
             }
@@ -432,6 +412,10 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setText("Train")
             self.mode = "configuring"
             self.segment_button.setEnabled(True)
+        # elif sender == self.save_model_button:
+        #    self.train_button.setText("Train")
+        #    self.mode = "configuring"
+        #    self.segment_button.setEnabled(True)
         elif (
             self.segment_button.text() == "Segment"
             and sender == self.segment_button
@@ -448,17 +432,17 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setEnabled(True)
 
     @thread_worker
-    def train_napari(self):
+    def train_napari(self, train_config, model_config):
 
-        global _train_config, _model_config, _model, _scheduler, _optimizer, _dataset
+        global dataset, model, optimizer, scheduler
 
         # Turn layer into dataset
-        _dataset = NapariDataset(
+        dataset = NapariDataset(
             layer=self.raw_selector.value,
             axis_names=self.get_selected_axes(),
-            crop_size=_train_config["crop_size"],
-            control_point_spacing=_train_config["control_point_spacing"],
-            control_point_jitter=_train_config["control_point_jitter"],
+            crop_size=train_config.crop_size[0],  # list to integer
+            control_point_spacing=train_config.control_point_spacing,
+            control_point_jitter=train_config.control_point_jitter,
         )
 
         if not os.path.exists("models"):
@@ -466,44 +450,46 @@ class SegmentationWidget(QMainWindow):
 
         # create train dataloader
         dataloader = torch.utils.data.DataLoader(
-            dataset=_dataset,
-            batch_size=_train_config["batch_size"],
+            dataset=dataset,
+            batch_size=train_config.batch_size,
             drop_last=True,
-            num_workers=_train_config["num_workers"],
+            num_workers=train_config.num_workers,
             pin_memory=True,
         )
 
-        downsampling_factors = [
-            [
-                _model_config["downsampling_factors"],
+        if dataset.get_num_spatial_dims() == 2:
+            downsampling_factors = [
+                [2, 2],
             ]
-            * _dataset.get_num_spatial_dims()
-        ] * _model_config["downsampling_layers"]
+        elif dataset.get_num_spatial_dims() == 3:
+            downsampling_factors = [
+                [2, 2, 2],
+            ]
 
         # set model
-        _model_orig = get_model(
-            in_channels=_dataset.get_num_channels(),
-            out_channels=_dataset.get_num_spatial_dims(),
-            num_fmaps=_model_config["num_fmaps"],
-            fmap_inc_factor=_model_config["fmap_inc_factor"],
-            features_in_last_layer=_model_config["features_in_last_layer"],
+        model_orig = get_model(
+            in_channels=dataset.get_num_channels(),
+            out_channels=dataset.get_num_spatial_dims(),
+            num_fmaps=model_config.num_fmaps,
+            fmap_inc_factor=model_config.fmap_inc_factor,
+            features_in_last_layer=model_config.features_in_last_layer,
             downsampling_factors=[
                 tuple(factor) for factor in downsampling_factors
             ],
-            num_spatial_dims=_dataset.get_num_spatial_dims(),
+            num_spatial_dims=dataset.get_num_spatial_dims(),
         )
 
         # put a wrapper around the model
-        _model = Model(_model_orig, self.get_selected_axes())
+        model = Model(model_orig, self.get_selected_axes())
 
         # set device
-        device = torch.device(self.device_combo_box.currentText())
+        device = torch.device(train_config.device)
 
-        _model = _model.to(device)
+        model = model.to(device)
 
         # initialize model weights
-        if _model_config["initialize"]:
-            for _name, layer in _model.named_modules():
+        if model_config.initialize:
+            for _name, layer in model.named_modules():
                 if isinstance(layer, torch.nn.modules.conv._ConvNd):
                     torch.nn.init.kaiming_normal_(
                         layer.weight, nonlinearity="relu"
@@ -511,27 +497,25 @@ class SegmentationWidget(QMainWindow):
 
         # set loss
         criterion = get_loss(
-            regularizer_weight=_train_config["regularizer_weight"],
-            temperature=_train_config["temperature"],
-            kappa=_train_config["kappa"],
-            density=_train_config["density"],
-            num_spatial_dims=_dataset.get_num_spatial_dims(),
-            reduce_mean=_train_config["reduce_mean"],
+            regularizer_weight=train_config.regularizer_weight,
+            temperature=train_config.temperature,
+            kappa=train_config.kappa,
+            density=train_config.density,
+            num_spatial_dims=dataset.get_num_spatial_dims(),
+            reduce_mean=train_config.reduce_mean,
             device=device,
         )
 
         # set optimizer
-        _optimizer = torch.optim.Adam(
-            _model.parameters(),
-            lr=_train_config["initial_learning_rate"],
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=train_config.initial_learning_rate,
         )
 
         # set scheduler:
 
         def lambda_(iteration):
-            return pow(
-                (1 - ((iteration) / _train_config["max_iterations"])), 0.9
-            )
+            return pow((1 - ((iteration) / train_config.max_iterations)), 0.9)
 
         # resume training
         if len(self.iterations) == 0:
@@ -539,34 +523,34 @@ class SegmentationWidget(QMainWindow):
         else:
             start_iteration = self.iterations[-1]
 
-        if not os.path.exists("models/last.pth"):
+        if model_config.checkpoint is None:
             pass
         else:
-            print("Resuming model from 'models/last.pth'")
-            state = torch.load("models/last.pth", map_location=device)
+            print(f"Resuming model from {model_config.checkpoint}")
+            state = torch.load(model_config.checkpoint, map_location=device)
             start_iteration = state["iteration"] + 1
             self.iterations = state["iterations"]
             self.losses = state["losses"]
-            _model.load_state_dict(state["model_state_dict"], strict=True)
-            _optimizer.load_state_dict(state["optim_state_dict"])
+            model.load_state_dict(state["model_state_dict"], strict=True)
+            optimizer.load_state_dict(state["optim_state_dict"])
 
         # call `train_iteration`
         for iteration, batch in zip(
-            range(start_iteration, _train_config["max_iterations"]),
+            range(start_iteration, train_config.max_iterations),
             dataloader,
         ):
-            _scheduler = torch.optim.lr_scheduler.LambdaLR(
-                _optimizer, lr_lambda=lambda_, last_epoch=iteration - 1
+            scheduler = torch.optim.lr_scheduler.LambdaLR(
+                optimizer, lr_lambda=lambda_, last_epoch=iteration - 1
             )
 
             train_loss, prediction = train_iteration(
                 batch,
-                model=_model,
+                model=model,
                 criterion=criterion,
-                optimizer=_optimizer,
+                optimizer=optimizer,
                 device=device,
             )
-            _scheduler.step()
+            scheduler.step()
             yield (iteration, train_loss)
 
     def on_yield(self, step_data):
@@ -589,12 +573,6 @@ class SegmentationWidget(QMainWindow):
     def update_canvas(self):
         self.losses_widget.plot(self.iterations, self.losses)
 
-        # self.loss_plot.set_xdata(self.iterations)
-        # self.loss_plot.set_ydata(self.losses)
-        # self.canvas.axes.relim()
-        # self.canvas.axes.autoscale_view()
-        # self.canvas.draw()
-
     def on_return(self, layers):
         # Describes what happens once segment button has completed
 
@@ -606,20 +584,18 @@ class SegmentationWidget(QMainWindow):
         self.update_mode(self.segment_button)
 
     def prepare_for_segmenting(self):
-        global _segment_config
-        # check if segment_config exists
-        if _segment_config is None:
-            _segment_config = {
-                "crop_size": 252,
-                "p_salt_pepper": 0.01,
-                "num_infer_iterations": 16,
-                "bandwidth": None,
-                "reduction_probability": 0.1,
-                "min_size": None,
-                "grow_distance": 3,
-                "shrink_distance": 6,
-            }
+        global inference_config
 
+        print("threshgold ...")
+        print("=" * 10)
+        print(self.threshold_line.text())
+
+        # if self.threshold_line.text() is not None:
+        inference_config = InferenceConfig(
+            crop_size=[int(self.crop_size_infer_line.text())],
+            num_infer_iterations=int(self.num_infer_iterations_line.text()),
+            threshold=self.threshold.text(),
+        )
         # update mode
         self.update_mode(self.sender())
 
@@ -633,44 +609,47 @@ class SegmentationWidget(QMainWindow):
 
     @thread_worker
     def segment_napari(self):
-        global _segment_config, _model, _dataset
+        global inference_config, model, dataset
 
         raw = self.raw_selector.value
 
-        if _segment_config["bandwidth"] is None:
-            _segment_config["bandwidth"] = int(
+        if inference_config.bandwidth is None:
+            inference_config.bandwidth = int(
                 0.5 * float(self.object_size_line.text())
             )
-        if _segment_config["min_size"] is None:
-            _segment_config["min_size"] = int(
+        if inference_config.min_size is None:
+            inference_config.min_size = int(
                 0.1 * np.pi * (float(self.object_size_line.text()) ** 2) / 4
             )
-        _model.eval()
+        model.eval()
 
-        num_spatial_dims = _dataset.num_spatial_dims
-        num_channels = _dataset.num_channels
-        spatial_dims = _dataset.spatial_dims
-        num_samples = _dataset.num_samples
+        # check if dataset is not None.
+        # user might directly go to inference ...
+
+        num_spatial_dims = dataset.num_spatial_dims
+        num_channels = dataset.num_channels
+        spatial_dims = dataset.spatial_dims
+        num_samples = dataset.num_samples
 
         print(
             f"Num spatial dims {num_spatial_dims} num channels {num_channels} spatial_dims {spatial_dims} num_samples {num_samples}"
         )
 
-        crop_size = (_segment_config["crop_size"],) * num_spatial_dims
+        crop_size = (inference_config.crop_size[0],) * num_spatial_dims
         device = self.device_combo_box.currentText()
 
         num_channels_temp = 1 if num_channels == 0 else num_channels
 
         voxel_size = gp.Coordinate((1,) * num_spatial_dims)
-        _model.set_infer(
-            p_salt_pepper=_segment_config["p_salt_pepper"],
-            num_infer_iterations=_segment_config["num_infer_iterations"],
+        model.set_infer(
+            p_salt_pepper=inference_config.p_salt_pepper,
+            num_infer_iterations=inference_config.num_infer_iterations,
             device=device,
         )
 
         input_shape = gp.Coordinate((1, num_channels_temp, *crop_size))
         output_shape = gp.Coordinate(
-            _model(
+            model(
                 torch.zeros(
                     (1, num_channels_temp, *crop_size), dtype=torch.float32
                 ).to(device)
@@ -691,7 +670,7 @@ class SegmentationWidget(QMainWindow):
         scan_request.add(prediction_key, output_size)
 
         predict = gp.torch.Predict(
-            _model,
+            model,
             inputs={"raw": raw_key},
             outputs={0: prediction_key},
             array_specs={prediction_key: gp.ArraySpec(voxel_size=voxel_size)},
@@ -781,9 +760,9 @@ class SegmentationWidget(QMainWindow):
             segmentation = mean_shift_segmentation(
                 embeddings_mean,
                 embeddings_std,
-                _segment_config["bandwidth"],
-                _segment_config["min_size"],
-                _segment_config["reduction_probability"],
+                inference_config.bandwidth,
+                inference_config.min_size,
+                inference_config.reduction_probability,
             )
             labels[sample, 0, ...] = segmentation
 
@@ -792,11 +771,11 @@ class SegmentationWidget(QMainWindow):
             segmentation = labels[sample, 0]
             distance_foreground = dtedt(segmentation == 0)
             expanded_mask = (
-                distance_foreground < _segment_config["grow_distance"]
+                distance_foreground < inference_config["grow_distance"]
             )
             distance_background = dtedt(expanded_mask)
             segmentation[
-                distance_background < _segment_config["shrink_distance"]
+                distance_background < inference_config.shrink_distance
             ] = 0
             pp_labels[sample, 0, ...] = segmentation
         return (
