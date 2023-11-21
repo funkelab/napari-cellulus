@@ -96,27 +96,21 @@ class SegmentationWidget(QMainWindow):
         pixmap_label = QLabel(pixmap=QPixmap(logo_path))
         text_label = QLabel("<h3>Cellulus</h3>")
 
-        self.image_layout = QVBoxLayout(self)
-        self.image_layout.addWidget(pixmap_label, alignment=Qt.AlignCenter)
-        self.image_layout.addWidget(text_label, alignment=Qt.AlignCenter)
-        self.image_layout.setSpacing(1)
-
         self.method_description_label = QLabel(
             '<small>Unsupervised Learning of Object-Centric Embeddings<br>for Cell Instance Segmentation in Microscopy Images.<br>If you are using this in your research, please <a href="https://github.com/funkelab/cellulus#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/funkelab/cellulus" style="color:gray;">https://github.com/funkelab/cellulus</a></tt></small>'
         )
         # inner layout
         grid_0 = QGridLayout()
-        grid_0.addLayout(self.image_layout, 0, 0, 1, 1)
-        grid_0.addWidget(self.method_description_label, 0, 1, 1, 1)
-
-        # specify layout
-        outer_layout = QVBoxLayout()
+        grid_0.addWidget(pixmap_label, 0, 0, 1, 1)
+        grid_0.addWidget(text_label, 1, 0, 1, 1)
+        grid_0.addWidget(self.method_description_label, 0, 1, 2, 1)
 
         # Initialize object size widget
         object_size_label = QLabel(self)
-        object_size_label.setText("Object Size [px]:")
+        object_size_label.setText("Object Width [px]:")
         self.object_size_line = QLineEdit(self)
         self.object_size_line.setText("30")
+
         device_label = QLabel(self)
         device_label.setText("Device")
         self.device_combo_box = QComboBox(self)
@@ -125,27 +119,11 @@ class SegmentationWidget(QMainWindow):
         self.device_combo_box.addItem("mps")
         self.device_combo_box.setCurrentText("mps")
 
-        grid_layout = QGridLayout()
-        grid_layout.addWidget(object_size_label, 0, 0)
-        grid_layout.addWidget(self.object_size_line, 0, 1)
-        grid_layout.addWidget(device_label, 1, 0)
-        grid_layout.addWidget(self.device_combo_box, 1, 1)
-
-        # Initialize train configs widget
-        collapsible_train_configs = QCollapsible("Train Configs", self)
-        collapsible_train_configs.addWidget(self.create_train_configs_widget)
-
-        # Initialize model configs widget
-        collapsible_model_configs = QCollapsible("Model Configs", self)
-        collapsible_model_configs.addWidget(self.create_model_configs_widget)
-
-        # Initialize loss/iterations widget
-
-        self.losses_widget = pg.PlotWidget()
-        self.losses_widget.setBackground((37, 41, 49))
-        styles = {"color": "white", "font-size": "16px"}
-        self.losses_widget.setLabel("left", "Loss", **styles)
-        self.losses_widget.setLabel("bottom", "Iterations", **styles)
+        grid_1 = QGridLayout()
+        grid_1.addWidget(object_size_label, 0, 0, 1, 1)
+        grid_1.addWidget(self.object_size_line, 0, 1, 1, 1)
+        grid_1.addWidget(device_label, 1, 0, 1, 1)
+        grid_1.addWidget(self.device_combo_box, 1, 1, 1, 1)
 
         # Initialize Layer Choice
         self.raw_selector = layer_choice_widget(
@@ -155,7 +133,6 @@ class SegmentationWidget(QMainWindow):
         # Initialize Checkboxes
         self.s_checkbox = QCheckBox("s")
         self.c_checkbox = QCheckBox("c")
-        self.t_checkbox = QCheckBox("t")
         self.z_checkbox = QCheckBox("z")
         self.y_checkbox = QCheckBox("y")
         self.x_checkbox = QCheckBox("x")
@@ -163,12 +140,98 @@ class SegmentationWidget(QMainWindow):
         axis_layout = QHBoxLayout()
         axis_layout.addWidget(self.s_checkbox)
         axis_layout.addWidget(self.c_checkbox)
-        axis_layout.addWidget(self.t_checkbox)
         axis_layout.addWidget(self.z_checkbox)
         axis_layout.addWidget(self.y_checkbox)
         axis_layout.addWidget(self.x_checkbox)
         axis_selector = QGroupBox("Axis Names:")
         axis_selector.setLayout(axis_layout)
+
+        # Initialize train configs widget
+        crop_size_label = QLabel(self)
+        crop_size_label.setText("Crop Size")
+        self.crop_size_line = QLineEdit(self)
+        self.crop_size_line.setText("252")
+        batch_size_label = QLabel(self)
+        batch_size_label.setText("Batch Size")
+        self.batch_size_line = QLineEdit(self)
+        self.batch_size_line.setText("8")
+        max_iterations_label = QLabel(self)
+        max_iterations_label.setText("Max iterations")
+        self.max_iterations_line = QLineEdit(self)
+        self.max_iterations_line.setText("100000")
+
+        grid_2 = QGridLayout()
+        grid_2.addWidget(
+            crop_size_label,
+            0,
+            0,
+            1,
+            1,
+        )
+        grid_2.addWidget(self.crop_size_line, 0, 1, 1, 1)
+        grid_2.addWidget(
+            batch_size_label,
+            2,
+            0,
+            1,
+            1,
+        )
+        grid_2.addWidget(self.batch_size_line, 2, 1, 1, 1)
+        grid_2.addWidget(
+            max_iterations_label,
+            3,
+            0,
+            1,
+            1,
+        )
+        grid_2.addWidget(self.max_iterations_line, 3, 1, 1, 1)
+
+        train_configs_widget = QWidget()
+        train_configs_widget.setLayout(grid_2)
+        collapsible_train_configs = QCollapsible("Train Configs", self)
+        collapsible_train_configs.addWidget(train_configs_widget)
+
+        # Initialize model configs widget
+
+        fmaps_label = QLabel(self)
+        fmaps_label.setText("Number of feature maps")
+        self.fmaps_line = QLineEdit(self)
+        self.fmaps_line.setText("256")
+        fmaps_increase_label = QLabel(self)
+        fmaps_increase_label.setText("Feature maps Inc. factor")
+        self.fmaps_increase_line = QLineEdit(self)
+        self.fmaps_increase_line.setText("3")
+
+        grid_3 = QGridLayout()
+        grid_3.addWidget(
+            fmaps_label,
+            0,
+            0,
+            1,
+            1,
+        )
+        grid_3.addWidget(self.fmaps_line, 0, 1, 1, 1)
+        grid_3.addWidget(
+            fmaps_increase_label,
+            2,
+            0,
+            1,
+            1,
+        )
+        grid_3.addWidget(self.fmaps_increase_line, 2, 1, 1, 1)
+
+        model_configs_widget = QWidget()
+        model_configs_widget.setLayout(grid_3)
+        collapsible_model_configs = QCollapsible("Model Configs", self)
+        collapsible_model_configs.addWidget(model_configs_widget)
+
+        # Initialize loss/iterations widget
+
+        self.losses_widget = pg.PlotWidget()
+        self.losses_widget.setBackground((37, 41, 49))
+        styles = {"color": "white", "font-size": "16px"}
+        self.losses_widget.setLabel("left", "Loss", **styles)
+        self.losses_widget.setLabel("bottom", "Iterations", **styles)
 
         # Initialize Train Button
         self.train_button = QPushButton("Train", self)
@@ -178,48 +241,70 @@ class SegmentationWidget(QMainWindow):
         collapsible_save_load_widget = QCollapsible(
             "Save and Load Model", self
         )
-        save_load_layout = QHBoxLayout()
-        save_model_button = QPushButton("Save Model", self)
-        load_model_button = QPushButton("Load Model", self)
-        save_load_layout.addWidget(save_model_button)
-        save_load_layout.addWidget(load_model_button)
+
+        # Initialize save/load model
+
+        save_model_button = QPushButton(self)
+        save_model_button.setText("Save Model")
+        load_model_button = QPushButton(self)
+        load_model_button.setText("Load Model")
+        grid_4 = QGridLayout()
+        grid_4.addWidget(save_model_button, 0, 0, 1, 1)
+        grid_4.addWidget(load_model_button, 0, 1, 1, 1)
         save_load_widget = QWidget()
-        save_load_widget.setLayout(save_load_layout)
+        save_load_widget.setLayout(grid_4)
         collapsible_save_load_widget.addWidget(save_load_widget)
 
         # Initialize Segment Configs widget
-        collapsible_segment_configs = QCollapsible("Inference Configs", self)
-        collapsible_segment_configs.addWidget(
-            self.create_segment_configs_widget
-        )
+        crop_size_infer_label = QLabel(self)
+        crop_size_infer_label.setText("Crop Size")
+        crop_size_infer_line = QLineEdit(self)
+        crop_size_infer_line.setText("252")
+        num_infer_iterations_label = QLabel(self)
+        num_infer_iterations_label.setText("No. of iterations")
+        num_infer_iterations_line = QLineEdit(self)
+        num_infer_iterations_line.setText("16")
+        binary_threshold_label = QLabel(self)
+        binary_threshold_label.setText("Binary Threshold")
+        binary_threshold_line = QLineEdit(self)
+        binary_threshold_line.setText("")
+
+        grid_5 = QGridLayout()
+        grid_5.addWidget(crop_size_infer_label, 0, 0, 1, 1)
+        grid_5.addWidget(crop_size_infer_line, 0, 1, 1, 1)
+        grid_5.addWidget(num_infer_iterations_label, 1, 0, 1, 1)
+        grid_5.addWidget(num_infer_iterations_line, 1, 1, 1, 1)
+        grid_5.addWidget(binary_threshold_label, 2, 0, 1, 1)
+        grid_5.addWidget(binary_threshold_line, 2, 1, 1, 1)
+        inference_widget = QWidget()
+        inference_widget.setLayout(grid_5)
+        collapsible_inference_configs = QCollapsible("Inference Configs", self)
+        collapsible_inference_configs.addWidget(inference_widget)
 
         # Initialize Segment Button
         self.segment_button = QPushButton("Segment", self)
         self.segment_button.clicked.connect(self.prepare_for_segmenting)
-
-        # Initialize progress bar
-        # self.pbar = QProgressBar(self)
 
         # Initialize Feedback Button
         self.feedback_label = QLabel(
             '<small>Please share any feedback <a href="https://github.com/funkelab/napari-cellulus/issues/new/choose" style="color:gray;">here</a>.</small>'
         )
 
+        # specify outer layout
+        outer_layout = QVBoxLayout()
+
         # Add all components to outer_layout
 
         outer_layout.addLayout(grid_0)
-        # outer_layout.addWidget(method_description_label)
-        outer_layout.addLayout(grid_layout)
-        # outer_layout.addWidget(global_params_widget)
-        outer_layout.addWidget(collapsible_train_configs)
-        outer_layout.addWidget(collapsible_model_configs)
-        # outer_layout.addWidget(plot_container_widget)
-        outer_layout.addWidget(self.losses_widget)
         outer_layout.addWidget(self.raw_selector.native)
         outer_layout.addWidget(axis_selector)
+        outer_layout.addLayout(grid_1)
+        outer_layout.addWidget(collapsible_train_configs)
+        outer_layout.addWidget(collapsible_model_configs)
+        outer_layout.addWidget(self.losses_widget)
         outer_layout.addWidget(self.train_button)
         outer_layout.addWidget(collapsible_save_load_widget)
-        outer_layout.addWidget(collapsible_segment_configs)
+        outer_layout.addWidget(collapsible_inference_configs)
         outer_layout.addWidget(self.segment_button)
         outer_layout.addWidget(self.feedback_label)
         outer_layout.setSpacing(20)
@@ -232,76 +317,6 @@ class SegmentationWidget(QMainWindow):
 
         self.setFixedWidth(400)
         self.setCentralWidget(self.scroll)
-
-    @property
-    def create_train_configs_widget(self):
-        @magic_factory(call_button="Save")
-        def train_configs_widget(
-            crop_size: int = 252,
-            batch_size: int = 8,
-            max_iterations: int = 100_000,
-            initial_learning_rate: float = 4e-5,
-            temperature: float = 10.0,
-            regularizer_weight: float = 1e-5,
-            reduce_mean: bool = True,
-            density: float = 0.1,
-            kappa: float = 10.0,
-            num_workers: int = 8,
-            control_point_spacing: int = 64,
-            control_point_jitter: float = 2.0,
-        ):
-            global _train_config
-            # Specify what should happen when 'Save' button is pressed
-            _train_config = {
-                "crop_size": crop_size,
-                "batch_size": batch_size,
-                "max_iterations": max_iterations,
-                "initial_learning_rate": initial_learning_rate,
-                "temperature": temperature,
-                "regularizer_weight": regularizer_weight,
-                "reduce_mean": reduce_mean,
-                "density": density,
-                "kappa": kappa,
-                "num_workers": num_workers,
-                "control_point_spacing": control_point_spacing,
-                "control_point_jitter": control_point_jitter,
-            }
-
-        if not hasattr(self, "__create_train_configs_widget"):
-            self.__create_train_configs_widget = train_configs_widget()
-            self.__create_train_configs_widget_native = (
-                self.__create_train_configs_widget.native
-            )
-        return self.__create_train_configs_widget_native
-
-    @property
-    def create_model_configs_widget(self):
-        @magic_factory(call_button="Save")
-        def model_configs_widget(
-            num_fmaps: int = 24,
-            fmap_inc_factor: int = 3,
-            features_in_last_layer: int = 64,
-            downsampling_factors: int = 2,
-            downsampling_layers: int = 1,
-            initialize: bool = True,
-        ):
-            global _model_config
-            # Specify what should happen when 'Save' button is pressed
-            _model_config = {
-                "num_fmaps": num_fmaps,
-                "fmap_inc_factor": fmap_inc_factor,
-                "features_in_last_layer": features_in_last_layer,
-                "downsampling_factors": downsampling_factors,
-                "downsampling_layers": downsampling_layers,
-                "initialize": initialize,
-            }
-
-        if not hasattr(self, "__create_model_configs_widget"):
-            self.__create_model_configs_widget = model_configs_widget()
-            self.__create_model_configs_widget_native = (
-                self.__create_model_configs_widget.native
-            )
-        return self.__create_model_configs_widget_native
 
     @property
     def create_segment_configs_widget(self):
