@@ -47,7 +47,7 @@ If you find our work useful in your research, please consider citing:
 
 ### Issues
 
-If you encounter any problems, please **[file an issue]** along with a detailed description.
+If you encounter any problems, please **[file an issue]** along with a description.
 
 <sub>This [napari] plugin was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.</sub>
 
