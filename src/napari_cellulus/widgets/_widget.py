@@ -15,6 +15,7 @@ from magicgui import magic_factory
 # widget stuff
 from napari.qt.threading import thread_worker
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -87,13 +88,26 @@ class SegmentationWidget(QMainWindow):
         self.losses = []
         self.iterations = []
 
-        # initialize mode. this will change to 'training' and 'segmentring' later
+        # initialize mode. this will change to 'training' and 'segmenting' later
         self.mode = "configuring"
 
         # initialize UI components
-        method_description_label = QLabel(
+        logo_path = "resources/logo.png"
+        pixmap_label = QLabel(pixmap=QPixmap(logo_path))
+        text_label = QLabel("<h3>Cellulus</h3>")
+
+        self.image_layout = QVBoxLayout(self)
+        self.image_layout.addWidget(pixmap_label, alignment=Qt.AlignCenter)
+        self.image_layout.addWidget(text_label, alignment=Qt.AlignCenter)
+        self.image_layout.setSpacing(1)
+
+        self.method_description_label = QLabel(
             '<small>Unsupervised Learning of Object-Centric Embeddings<br>for Cell Instance Segmentation in Microscopy Images.<br>If you are using this in your research, please <a href="https://github.com/funkelab/cellulus#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/funkelab/cellulus" style="color:gray;">https://github.com/funkelab/cellulus</a></tt></small>'
         )
+        # inner layout
+        grid_0 = QGridLayout()
+        grid_0.addLayout(self.image_layout, 0, 0, 1, 1)
+        grid_0.addWidget(self.method_description_label, 0, 1, 1, 1)
 
         # specify layout
         outer_layout = QVBoxLayout()
@@ -193,7 +207,8 @@ class SegmentationWidget(QMainWindow):
 
         # Add all components to outer_layout
 
-        outer_layout.addWidget(method_description_label)
+        outer_layout.addLayout(grid_0)
+        # outer_layout.addWidget(method_description_label)
         outer_layout.addLayout(grid_layout)
         # outer_layout.addWidget(global_params_widget)
         outer_layout.addWidget(collapsible_train_configs)
