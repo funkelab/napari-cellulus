@@ -6,7 +6,8 @@ import napari
 import numpy as np
 import pyqtgraph as pg
 import torch
-from cellulus.configs.model_config import InferenceConfig, ModelConfig
+from cellulus.configs.inference_config import InferenceConfig
+from cellulus.configs.model_config import ModelConfig
 from cellulus.configs.train_config import TrainConfig
 from cellulus.criterions import get_loss
 from cellulus.models import get_model
