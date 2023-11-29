@@ -203,7 +203,7 @@ class SegmentationWidget(QMainWindow):
         fmaps_label = QLabel(self)
         fmaps_label.setText("Number of feature maps")
         self.fmaps_line = QLineEdit(self)
-        self.fmaps_line.setText("256")
+        self.fmaps_line.setText("24")
         fmaps_increase_label = QLabel(self)
         fmaps_increase_label.setText("Feature maps Inc. factor")
         self.fmaps_increase_line = QLineEdit(self)
@@ -304,12 +304,16 @@ class SegmentationWidget(QMainWindow):
             Qt.Orientation.Horizontal
         )
         self.binary_threshold_slider.setRange(0, 100)
+        self.binary_threshold_slider.sliderReleased.connect(
+            self.prepare_for_segmenting
+        )
 
         grid_6 = QGridLayout()
         grid_6.addWidget(bandwidth_label, 0, 0, 1, 1)
         grid_6.addWidget(self.bandwidth_slider, 0, 1, 1, 1)
         grid_6.addWidget(binary_threshold_label, 1, 0, 1, 1)
         grid_6.addWidget(self.binary_threshold_slider, 1, 1, 1, 1)
+
         segmentation_widget = QWidget()
         segmentation_widget.setLayout(grid_6)
         collapsible_segmentation_configs = QCollapsible(
@@ -317,9 +321,6 @@ class SegmentationWidget(QMainWindow):
         )
         collapsible_segmentation_configs.addWidget(segmentation_widget)
 
-        # Initialize Segment Button
-        self.segment_button = QPushButton("Segment", self)
-        # self.segment_button.clicked.connect(#)
         # Initialize Feedback Button
         self.feedback_label = QLabel(
             '<small>Please share any feedback <a href="https://github.com/funkelab/napari-cellulus/issues/new/choose" style="color:gray;">here</a>.</small>'
@@ -342,7 +343,6 @@ class SegmentationWidget(QMainWindow):
         outer_layout.addWidget(collapsible_inference_configs)
         outer_layout.addWidget(self.predict_embeddings_button)
         outer_layout.addWidget(collapsible_segmentation_configs)
-        outer_layout.addWidget(self.segment_button)
         outer_layout.addWidget(self.feedback_label)
         outer_layout.setSpacing(20)
         self.widget.setLayout(outer_layout)
@@ -373,7 +373,7 @@ class SegmentationWidget(QMainWindow):
 
     def get_model_weights(self):
 
-        self.update_mode(self.sender)
+        self.update_mode(self.sender())
         global model_config
         fname, _ = QFileDialog.getOpenFileName(
             self, "Browse to model weights", "models/last.pth"
@@ -438,7 +438,6 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setText("Pause")
             self.mode = "training"
             self.predict_embeddings_button.setEnabled(False)
-            self.segment_button.setEnabled(False)
             self.load_model_button.setEnabled(False)
         elif (
             self.train_button.text() == "Pause" and sender == self.train_button
@@ -446,7 +445,6 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setText("Train")
             self.mode = "configuring"
             self.predict_embeddings_button.setEnabled(True)
-            self.segment_button.setEnabled(True)
             self.load_model_button.setEnabled(True)
         elif (
             self.predict_embeddings_button.text() == "Predict Embeddings"
@@ -457,7 +455,6 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setEnabled(False)
             self.save_model_button.setEnabled(False)
             self.load_model_button.setEnabled(False)
-            self.segment_button.setEnabled(False)
         elif (
             self.predict_embeddings_button.text() == "Pause"
             and sender == self.predict_embeddings_button
@@ -467,7 +464,11 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setEnabled(True)
             self.save_model_button.setEnabled(True)
             self.load_model_button.setEnabled(True)
-            self.segment_button.setEnabled(True)
+        elif sender == self.binary_threshold_slider:
+            self.mode = "segmenting"
+            self.train_button.setEnabled(False)
+            self.save_model_button.setEnabled(False)
+            self.load_model_button.setEnabled(False)
 
     @thread_worker
     def train(self, train_config, model_config):
@@ -612,7 +613,7 @@ class SegmentationWidget(QMainWindow):
         self.losses_widget.plot(self.iterations, self.losses)
 
     def on_return(self, layers):
-        # Describes what happens once segment button has completed
+        # Describes what happens once worker is completed
 
         for data, metadata, layer_type in layers:
             if layer_type == "image":
@@ -620,6 +621,7 @@ class SegmentationWidget(QMainWindow):
             elif layer_type == "labels":
                 self.viewer.add_labels(data.astype(int), **metadata)
         self.update_mode(self.predict_embeddings_button)
+        self.worker.quit()
 
     def prepare_for_prediction(self):
         global inference_config
@@ -633,15 +635,29 @@ class SegmentationWidget(QMainWindow):
         self.update_mode(self.sender())
 
         if self.mode == "predicting":
-            self.worker = self.predict_napari()
+            self.worker = self.predict()
             self.worker.yielded.connect(self.on_yield)
             self.worker.returned.connect(self.on_return)
             self.worker.start()
         elif self.mode == "configuring":
             self.worker.quit()
 
+    def prepare_for_segmenting(self):
+        global inference_config
+
+        print("=" * 10)
+        print(self.sender())
+        print(self.mode)
+
+        # update mode
+        self.update_mode(self.sender())
+
+        if self.mode == "segmenting":
+            self.worker = self.segment()
+            self.worker.start()
+
     @thread_worker
-    def predict_napari(self):
+    def predict(self):
         global inference_config, model, dataset
 
         raw_image = self.raw_selector.value
@@ -782,9 +798,9 @@ class SegmentationWidget(QMainWindow):
         for sample in range(prediction_data.shape[0]):
             embeddings = prediction_data[sample]
             embeddings_std = embeddings[-1, ...]
-            thresh = threshold_otsu(embeddings_std)
-            print(f"Threshold for sample {sample} is {thresh}")
-            binary_mask = embeddings_std < thresh
+            threshold = threshold_otsu(embeddings_std)
+            print(f"Threshold for sample {sample} is {threshold}")
+            binary_mask = embeddings_std < threshold
             foreground[sample, 0, ...] = binary_mask
 
         labels = np.zeros_like(prediction_data[:, 0:1, ...], dtype=np.uint64)
@@ -793,9 +809,6 @@ class SegmentationWidget(QMainWindow):
             embeddings_std = embeddings[-1, ...]
             embeddings_mean = embeddings[np.newaxis, :num_spatial_dims, ...]
             threshold = threshold_otsu(embeddings_std)
-            print(
-                f"For sample {sample}, binary threshold {threshold} was used."
-            )
             segmentation = mean_shift_segmentation(
                 embeddings_mean,
                 embeddings_std,
@@ -826,3 +839,8 @@ class SegmentationWidget(QMainWindow):
             + [(labels, {"name": "Segmentation"}, "labels")]
             + [(pp_labels, {"name": "Post Processed"}, "labels")]
         )
+
+    @thread_worker
+    def segment(self):
+        threshold = self.binary_threshold_slider.value()
+        print(f"Threshold is {threshold}")
