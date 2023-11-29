@@ -35,7 +35,7 @@ from qtpy.QtWidgets import (
 )
 from scipy.ndimage import distance_transform_edt as dtedt
 from skimage.filters import threshold_otsu
-from superqt import QCollapsible
+from superqt import QCollapsible, QLabeledDoubleSlider
 from torch import nn
 
 from ..dataset import NapariDataset
@@ -73,6 +73,10 @@ class Model(nn.Module):
 
         return self.model(x)
 
+    def set_infer(self, p_salt_pepper, num_infer_iterations, device):
+        self.model.eval()
+        self.model.set_infer(p_salt_pepper, num_infer_iterations, device)
+
 
 class SegmentationWidget(QMainWindow):
     def __init__(self, napari_viewer):
@@ -91,7 +95,7 @@ class SegmentationWidget(QMainWindow):
         self.losses = []
         self.iterations = []
 
-        # initialize mode. this will change to 'training' and 'segmenting' later
+        # initialize mode. this will change to 'training', 'predicting' and 'segmenting' later
         self.mode = "configuring"
 
         # initialize UI components
@@ -261,36 +265,61 @@ class SegmentationWidget(QMainWindow):
         save_load_widget.setLayout(grid_4)
         collapsible_save_load_widget.addWidget(save_load_widget)
 
-        # Initialize Segment Configs widget
+        # Initialize Inference Configs widget
         crop_size_infer_label = QLabel(self)
         crop_size_infer_label.setText("Crop Size")
-        crop_size_infer_line = QLineEdit(self)
-        crop_size_infer_line.setText("252")
+        self.crop_size_infer_line = QLineEdit(self)
+        self.crop_size_infer_line.setText("252")
         num_infer_iterations_label = QLabel(self)
         num_infer_iterations_label.setText("No. of iterations")
-        num_infer_iterations_line = QLineEdit(self)
-        num_infer_iterations_line.setText("16")
-        binary_threshold_label = QLabel(self)
-        binary_threshold_label.setText("Binary Threshold")
-        binary_threshold_line = QLineEdit(self)
-        binary_threshold_line.setText("")
+        self.num_infer_iterations_line = QLineEdit(self)
+        self.num_infer_iterations_line.setText("16")
 
         grid_5 = QGridLayout()
         grid_5.addWidget(crop_size_infer_label, 0, 0, 1, 1)
-        grid_5.addWidget(crop_size_infer_line, 0, 1, 1, 1)
+        grid_5.addWidget(self.crop_size_infer_line, 0, 1, 1, 1)
         grid_5.addWidget(num_infer_iterations_label, 1, 0, 1, 1)
-        grid_5.addWidget(num_infer_iterations_line, 1, 1, 1, 1)
-        grid_5.addWidget(binary_threshold_label, 2, 0, 1, 1)
-        grid_5.addWidget(binary_threshold_line, 2, 1, 1, 1)
+        grid_5.addWidget(self.num_infer_iterations_line, 1, 1, 1, 1)
         inference_widget = QWidget()
         inference_widget.setLayout(grid_5)
         collapsible_inference_configs = QCollapsible("Inference Configs", self)
         collapsible_inference_configs.addWidget(inference_widget)
 
+        # Initialize Predict Embeddings Button
+        self.predict_embeddings_button = QPushButton(
+            "Predict Embeddings", self
+        )
+        self.predict_embeddings_button.clicked.connect(
+            self.prepare_for_prediction
+        )
+
+        bandwidth_label = QLabel(self)
+        bandwidth_label.setText("Bandwidth")
+        self.bandwidth_slider = QLabeledDoubleSlider(Qt.Orientation.Horizontal)
+        self.bandwidth_slider.setRange(0, 100)
+
+        binary_threshold_label = QLabel(self)
+        binary_threshold_label.setText("Threshold")
+        self.binary_threshold_slider = QLabeledDoubleSlider(
+            Qt.Orientation.Horizontal
+        )
+        self.binary_threshold_slider.setRange(0, 100)
+
+        grid_6 = QGridLayout()
+        grid_6.addWidget(bandwidth_label, 0, 0, 1, 1)
+        grid_6.addWidget(self.bandwidth_slider, 0, 1, 1, 1)
+        grid_6.addWidget(binary_threshold_label, 1, 0, 1, 1)
+        grid_6.addWidget(self.binary_threshold_slider, 1, 1, 1, 1)
+        segmentation_widget = QWidget()
+        segmentation_widget.setLayout(grid_6)
+        collapsible_segmentation_configs = QCollapsible(
+            "Segmentation Configs", self
+        )
+        collapsible_segmentation_configs.addWidget(segmentation_widget)
+
         # Initialize Segment Button
         self.segment_button = QPushButton("Segment", self)
-        self.segment_button.clicked.connect(self.prepare_for_segmenting)
-
+        # self.segment_button.clicked.connect(#)
         # Initialize Feedback Button
         self.feedback_label = QLabel(
             '<small>Please share any feedback <a href="https://github.com/funkelab/napari-cellulus/issues/new/choose" style="color:gray;">here</a>.</small>'
@@ -311,6 +340,8 @@ class SegmentationWidget(QMainWindow):
         outer_layout.addWidget(self.train_button)
         outer_layout.addWidget(collapsible_save_load_widget)
         outer_layout.addWidget(collapsible_inference_configs)
+        outer_layout.addWidget(self.predict_embeddings_button)
+        outer_layout.addWidget(collapsible_segmentation_configs)
         outer_layout.addWidget(self.segment_button)
         outer_layout.addWidget(self.feedback_label)
         outer_layout.setSpacing(20)
@@ -385,7 +416,7 @@ class SegmentationWidget(QMainWindow):
         self.update_mode(self.sender())
 
         if self.mode == "training":
-            self.worker = self.train_napari(train_config, model_config)
+            self.worker = self.train(train_config, model_config)
             self.worker.yielded.connect(self.on_yield)
             self.worker.returned.connect(self.on_return)
             self.worker.start()
@@ -406,34 +437,40 @@ class SegmentationWidget(QMainWindow):
         if self.train_button.text() == "Train" and sender == self.train_button:
             self.train_button.setText("Pause")
             self.mode = "training"
+            self.predict_embeddings_button.setEnabled(False)
             self.segment_button.setEnabled(False)
+            self.load_model_button.setEnabled(False)
         elif (
             self.train_button.text() == "Pause" and sender == self.train_button
         ):
             self.train_button.setText("Train")
             self.mode = "configuring"
+            self.predict_embeddings_button.setEnabled(True)
             self.segment_button.setEnabled(True)
-        # elif sender == self.save_model_button:
-        #    self.train_button.setText("Train")
-        #    self.mode = "configuring"
-        #    self.segment_button.setEnabled(True)
+            self.load_model_button.setEnabled(True)
         elif (
-            self.segment_button.text() == "Segment"
-            and sender == self.segment_button
+            self.predict_embeddings_button.text() == "Predict Embeddings"
+            and sender == self.predict_embeddings_button
         ):
-            self.segment_button.setText("Pause")
-            self.mode = "segmenting"
+            self.predict_embeddings_button.setText("Pause")
+            self.mode = "predicting"
             self.train_button.setEnabled(False)
+            self.save_model_button.setEnabled(False)
+            self.load_model_button.setEnabled(False)
+            self.segment_button.setEnabled(False)
         elif (
-            self.segment_button.text() == "Pause"
-            and sender == self.segment_button
+            self.predict_embeddings_button.text() == "Pause"
+            and sender == self.predict_embeddings_button
         ):
-            self.segment_button.setText("Segment")
+            self.predict_embeddings_button.setText("Predict Embeddings")
             self.mode = "configuring"
             self.train_button.setEnabled(True)
+            self.save_model_button.setEnabled(True)
+            self.load_model_button.setEnabled(True)
+            self.segment_button.setEnabled(True)
 
     @thread_worker
-    def train_napari(self, train_config, model_config):
+    def train(self, train_config, model_config):
 
         global dataset, model, optimizer, scheduler
 
@@ -567,7 +604,7 @@ class SegmentationWidget(QMainWindow):
             self.iterations.append(iteration)
             self.losses.append(loss)
             self.update_canvas()
-        elif self.mode == "segmenting":
+        elif self.mode == "predicting":
             print(step_data)
             # self.pbar.setValue(step_data)
 
@@ -582,26 +619,21 @@ class SegmentationWidget(QMainWindow):
                 self.viewer.add_image(data, **metadata)
             elif layer_type == "labels":
                 self.viewer.add_labels(data.astype(int), **metadata)
-        self.update_mode(self.segment_button)
+        self.update_mode(self.predict_embeddings_button)
 
-    def prepare_for_segmenting(self):
+    def prepare_for_prediction(self):
         global inference_config
 
-        print("threshgold ...")
-        print("=" * 10)
-        print(self.threshold_line.text())
-
-        # if self.threshold_line.text() is not None:
         inference_config = InferenceConfig(
             crop_size=[int(self.crop_size_infer_line.text())],
             num_infer_iterations=int(self.num_infer_iterations_line.text()),
-            threshold=self.threshold.text(),
         )
+
         # update mode
         self.update_mode(self.sender())
 
-        if self.mode == "segmenting":
-            self.worker = self.segment_napari()
+        if self.mode == "predicting":
+            self.worker = self.predict_napari()
             self.worker.yielded.connect(self.on_yield)
             self.worker.returned.connect(self.on_return)
             self.worker.start()
@@ -609,10 +641,10 @@ class SegmentationWidget(QMainWindow):
             self.worker.quit()
 
     @thread_worker
-    def segment_napari(self):
+    def predict_napari(self):
         global inference_config, model, dataset
 
-        raw = self.raw_selector.value
+        raw_image = self.raw_selector.value
 
         if inference_config.bandwidth is None:
             inference_config.bandwidth = int(
@@ -622,7 +654,13 @@ class SegmentationWidget(QMainWindow):
             inference_config.min_size = int(
                 0.1 * np.pi * (float(self.object_size_line.text()) ** 2) / 4
             )
-        model.eval()
+
+        device = torch.device(self.device_combo_box.currentText())
+        model.set_infer(
+            p_salt_pepper=inference_config.p_salt_pepper,
+            num_infer_iterations=inference_config.num_infer_iterations,
+            device=device,
+        )
 
         # check if dataset is not None.
         # user might directly go to inference ...
@@ -631,105 +669,101 @@ class SegmentationWidget(QMainWindow):
         num_channels = dataset.num_channels
         spatial_dims = dataset.spatial_dims
         num_samples = dataset.num_samples
-
-        print(
-            f"Num spatial dims {num_spatial_dims} num channels {num_channels} spatial_dims {spatial_dims} num_samples {num_samples}"
-        )
-
-        crop_size = (inference_config.crop_size[0],) * num_spatial_dims
-        device = self.device_combo_box.currentText()
-
+        num_dims = dataset.num_dims
         num_channels_temp = 1 if num_channels == 0 else num_channels
 
-        voxel_size = gp.Coordinate((1,) * num_spatial_dims)
+        crop_size = (inference_config.crop_size[0],) * num_spatial_dims
+
+        input_shape = gp.Coordinate((1, num_channels_temp, *crop_size))
+        if num_channels == 0:
+            output_shape = gp.Coordinate(
+                model(
+                    torch.zeros((1, *crop_size), dtype=torch.float32).to(
+                        device
+                    )
+                ).shape
+            )
+        else:
+            output_shape = gp.Coordinate(
+                model(
+                    torch.zeros(
+                        (1, num_channels_temp, *crop_size), dtype=torch.float32
+                    ).to(device)
+                ).shape
+            )
+
+        voxel_size = (1,) * (num_spatial_dims)
+        model.eval()
         model.set_infer(
             p_salt_pepper=inference_config.p_salt_pepper,
             num_infer_iterations=inference_config.num_infer_iterations,
             device=device,
         )
 
-        input_shape = gp.Coordinate((1, num_channels_temp, *crop_size))
-        output_shape = gp.Coordinate(
-            model(
-                torch.zeros(
-                    (1, num_channels_temp, *crop_size), dtype=torch.float32
-                ).to(device)
-            ).shape
+        input_size = gp.Coordinate(input_shape[2:]) * gp.Coordinate(voxel_size)
+        output_size = gp.Coordinate(output_shape[2:]) * gp.Coordinate(
+            voxel_size
         )
-        input_size = (
-            gp.Coordinate(input_shape[-num_spatial_dims:]) * voxel_size
-        )
-        output_size = (
-            gp.Coordinate(output_shape[-num_spatial_dims:]) * voxel_size
-        )
+
         context = (input_size - output_size) / 2
 
-        raw_key = gp.ArrayKey("RAW")
-        prediction_key = gp.ArrayKey("PREDICT")
+        raw = gp.ArrayKey("RAW")
+        prediction = gp.ArrayKey("PREDICT")
+
         scan_request = gp.BatchRequest()
-        scan_request.add(raw_key, input_size)
-        scan_request.add(prediction_key, output_size)
+        scan_request.add(raw, input_size)
+        scan_request.add(prediction, output_size)
 
         predict = gp.torch.Predict(
             model,
-            inputs={"raw": raw_key},
-            outputs={0: prediction_key},
-            array_specs={prediction_key: gp.ArraySpec(voxel_size=voxel_size)},
+            inputs={"x": raw},
+            outputs={0: prediction},
+            array_specs={prediction: gp.ArraySpec(voxel_size=voxel_size)},
         )
+
         pipeline = NapariImageSource(
+            raw_image,
             raw,
-            raw_key,
             gp.ArraySpec(
                 gp.Roi(
-                    (0,) * num_spatial_dims,
-                    raw.data.shape[-num_spatial_dims:],
+                    (0,) * num_dims,
+                    raw_image.data.shape,
                 ),
-                voxel_size=voxel_size,
+                voxel_size=(1,) * num_dims,
             ),
             spatial_dims,
         )
-
-        if num_samples == 0 and num_channels == 0:
+        if num_samples == 0:
             pipeline += (
-                gp.Pad(raw_key, context)
-                + gp.Unsqueeze([raw_key], 0)
-                + gp.Unsqueeze([raw_key], 0)
+                gp.Pad(raw, context, mode="reflect")
+                + gp.Unsqueeze([raw], 0)
                 + predict
                 + gp.Scan(scan_request)
             )
-        elif num_samples != 0 and num_channels == 0:
+        else:
             pipeline += (
-                gp.Pad(raw_key, context)
-                + gp.Unsqueeze([raw_key], 1)
+                gp.Pad(raw, context, mode="reflect")
                 + predict
                 + gp.Scan(scan_request)
-            )
-        elif num_samples == 0 and num_channels != 0:
-            pipeline += (
-                gp.Pad(raw_key, context)
-                + gp.Unsqueeze([raw_key], 0)
-                + predict
-                + gp.Scan(scan_request)
-            )
-        elif num_samples != 0 and num_channels != 0:
-            pipeline += (
-                gp.Pad(raw_key, context) + predict + gp.Scan(scan_request)
             )
 
         # request to pipeline for ROI of whole image/volume
         request = gp.BatchRequest()
-        request.add(prediction_key, raw.data.shape[-num_spatial_dims:])
+        request.add(prediction, raw_image.data.shape[-num_spatial_dims:])
+
         counter = 0
         with gp.build(pipeline):
             batch = pipeline.request_batch(request)
             yield counter
             counter += 0.1
 
-        prediction = batch.arrays[prediction_key].data
+        prediction_data = batch.arrays[prediction].data
+        print(f"prediction data has shape{prediction_data.shape}")
+
         colormaps = ["red", "green", "blue"]
         prediction_layers = [
             (
-                prediction[:, i : i + 1, ...].copy(),
+                prediction_data[:, i : i + 1, ...].copy(),
                 {
                     "name": "offset-" + "zyx"[num_spatial_dims - i]
                     if i < num_spatial_dims
@@ -744,35 +778,42 @@ class SegmentationWidget(QMainWindow):
             for i in range(num_spatial_dims + 1)
         ]
 
-        foreground = np.zeros_like(prediction[:, 0:1, ...], dtype=bool)
-        for sample in range(prediction.shape[0]):
-            embeddings = prediction[sample]
+        foreground = np.zeros_like(prediction_data[:, 0:1, ...], dtype=bool)
+        for sample in range(prediction_data.shape[0]):
+            embeddings = prediction_data[sample]
             embeddings_std = embeddings[-1, ...]
             thresh = threshold_otsu(embeddings_std)
             print(f"Threshold for sample {sample} is {thresh}")
             binary_mask = embeddings_std < thresh
             foreground[sample, 0, ...] = binary_mask
 
-        labels = np.zeros_like(prediction[:, 0:1, ...], dtype=np.uint64)
-        for sample in range(prediction.shape[0]):
-            embeddings = prediction[sample]
+        labels = np.zeros_like(prediction_data[:, 0:1, ...], dtype=np.uint64)
+        for sample in range(prediction_data.shape[0]):
+            embeddings = prediction_data[sample]
             embeddings_std = embeddings[-1, ...]
             embeddings_mean = embeddings[np.newaxis, :num_spatial_dims, ...]
+            threshold = threshold_otsu(embeddings_std)
+            print(
+                f"For sample {sample}, binary threshold {threshold} was used."
+            )
             segmentation = mean_shift_segmentation(
                 embeddings_mean,
                 embeddings_std,
                 inference_config.bandwidth,
                 inference_config.min_size,
                 inference_config.reduction_probability,
+                threshold,
             )
             labels[sample, 0, ...] = segmentation
 
-        pp_labels = np.zeros_like(prediction[:, 0:1, ...], dtype=np.uint64)
-        for sample in range(prediction.shape[0]):
+        pp_labels = np.zeros_like(
+            prediction_data[:, 0:1, ...], dtype=np.uint64
+        )
+        for sample in range(prediction_data.shape[0]):
             segmentation = labels[sample, 0]
             distance_foreground = dtedt(segmentation == 0)
             expanded_mask = (
-                distance_foreground < inference_config["grow_distance"]
+                distance_foreground < inference_config.grow_distance
             )
             distance_background = dtedt(expanded_mask)
             segmentation[
