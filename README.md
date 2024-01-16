@@ -1,6 +1,3 @@
-<p align="center">
-  <img src="https://github.com/funkelab/napari-cellulus/assets/34229641/4ee5a9de-1815-479f-963b-674e32ae921b" width=200/>
-</p>
 <h2 align="center">A napari plugin for cellulus</h2>
 
 - **[Introduction](#introduction)**
@@ -19,10 +16,15 @@ The main source repository for *cellulus* lives **[here](https://github.com/funk
 
 ### Installation
 
-To install the latest development version:
+To install the latest version:
 
 ```
-pip install git+https://github.com/funkelab/napari-cellulus.git
+conda create -y -n napari-cellulus python=3.9
+conda activate napari-cellulus
+pip install torch torchvision
+git clone https://github.com/funkelab/napari-cellulus.git
+cd napari-cellulus
+pip install -e .
 ```
 
 ### Getting Started
@@ -48,15 +50,3 @@ If you find our work useful in your research, please consider citing:
 ### Issues
 
 If you encounter any problems, please **[file an issue]** along with a description.
-
-<sub>This [napari] plugin was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.</sub>
-
-[napari]: https://github.com/napari/napari
-[Cookiecutter]: https://github.com/audreyr/cookiecutter
-[@napari]: https://github.com/napari
-[cookiecutter-napari-plugin]: https://github.com/napari/cookiecutter-napari-plugin
-[file an issue]: https://github.com/funkelab/napari-cellulus/issues
-[napari]: https://github.com/napari/napari
-[tox]: https://tox.readthedocs.io/en/latest/
-[pip]: https://pypi.org/project/pip/
-[PyPI]: https://pypi.org/
