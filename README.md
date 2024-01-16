@@ -29,7 +29,7 @@ pip install -e .
 
 ### Getting Started
 
-Run the following commands in a terminal window
+Run the following commands in a terminal window:
 ```
 conda activate napari-cellulus
 napari
