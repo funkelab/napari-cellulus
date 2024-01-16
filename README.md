@@ -35,7 +35,7 @@ conda activate napari-cellulus
 napari
 ```
 
-Next, select `Cellulus` from Plugins drop-down menu.
+Next, select `Cellulus` from the `Plugins` drop-down menu.
 
 ### Citation
 
