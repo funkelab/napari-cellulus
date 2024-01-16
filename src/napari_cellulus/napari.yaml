@@ -1,17 +1,17 @@
 name: napari-cellulus
-display_name: Cellulus
+display_name: cellulus
 contributions:
   commands:
     - id: napari-cellulus.tissuenet_sample
       python_name: napari_cellulus._sample_data:tissuenet_sample
-      title: Load sample data from Cellulus
+      title: Load sample data from cellulus
     - id: napari-cellulus.SegmentationWidget
-      python_name: napari_cellulus.widgets._widget:SegmentationWidget
-      title: Cellulus
+      python_name: napari_cellulus.widgets.widget:SegmentationWidget
+      title: cellulus
   sample_data:
     - command: napari-cellulus.tissuenet_sample
-      display_name: Cellulus
+      display_name: cellulus
       key: tissuenet_sample
   widgets:
     - command: napari-cellulus.SegmentationWidget
-      display_name: Cellulus
+      display_name: cellulus

@@ -17,7 +17,6 @@ from cellulus.utils.mean_shift import mean_shift_segmentation
 # widget stuff
 from napari.qt.threading import thread_worker
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -85,13 +84,13 @@ class SegmentationWidget(QMainWindow):
         self.scroll = QScrollArea()
         self.viewer = napari_viewer
 
-        # initialize train_config and model_config
+        # Initialize `train_config` and `model_config`
 
         self.train_config = None
         self.model_config = None
         self.segment_config = None
 
-        # initialize losses and iterations
+        # Initialize losses and iterations
         self.losses = []
         self.iterations = []
 
@@ -99,8 +98,6 @@ class SegmentationWidget(QMainWindow):
         self.mode = "configuring"
 
         # initialize UI components
-        logo_path = "resources/logo.png"
-        pixmap_label = QLabel(pixmap=QPixmap(logo_path))
         text_label = QLabel("<h3>Cellulus</h3>")
 
         self.method_description_label = QLabel(
@@ -108,7 +105,6 @@ class SegmentationWidget(QMainWindow):
         )
         # inner layout
         grid_0 = QGridLayout()
-        grid_0.addWidget(pixmap_label, 0, 0, 1, 1)
         grid_0.addWidget(text_label, 1, 0, 1, 1)
         grid_0.addWidget(self.method_description_label, 0, 1, 2, 1)
 
@@ -132,7 +128,7 @@ class SegmentationWidget(QMainWindow):
         grid_1.addWidget(device_label, 1, 0, 1, 1)
         grid_1.addWidget(self.device_combo_box, 1, 1, 1, 1)
 
-        # Initialize Layer Choice
+        # Initialize choice of layer.
         self.raw_selector = layer_choice_widget(
             self.viewer, annotation=napari.layers.Image, name="raw"
         )
@@ -153,6 +149,12 @@ class SegmentationWidget(QMainWindow):
         axis_selector = QGroupBox("Axis Names:")
         axis_selector.setLayout(axis_layout)
 
+        if self.raw_selector.value is not None:
+            self.update_axis_layout()
+        self.raw_selector.native.currentTextChanged.connect(
+            self.update_axis_layout
+        )
+
         # Initialize train configs widget
         crop_size_label = QLabel(self)
         crop_size_label.setText("Crop Size")
@@ -165,7 +167,7 @@ class SegmentationWidget(QMainWindow):
         max_iterations_label = QLabel(self)
         max_iterations_label.setText("Max iterations")
         self.max_iterations_line = QLineEdit(self)
-        self.max_iterations_line.setText("100000")
+        self.max_iterations_line.setText("2000")
 
         grid_2 = QGridLayout()
         grid_2.addWidget(
@@ -367,9 +369,31 @@ class SegmentationWidget(QMainWindow):
                 self.x_checkbox,
             ],
         ):
+
             if checkbox.isChecked():
                 names.append(name)
         return names
+
+    def update_axis_layout(self):
+        im_shape = self.raw_selector.value.data.shape
+        if len(im_shape) == 2:
+            self.y_checkbox.setChecked(True)
+            self.x_checkbox.setChecked(True)
+        elif len(im_shape) == 3:
+            self.z_checkbox.setChecked(True)
+            self.y_checkbox.setChecked(True)
+            self.x_checkbox.setChecked(True)
+        elif len(im_shape) == 4:
+            self.c_checkbox.setChecked(True)
+            self.z_checkbox.setChecked(True)
+            self.y_checkbox.setChecked(True)
+            self.x_checkbox.setChecked(True)
+        elif len(im_shape) == 5:
+            self.s_checkbox.setChecked(True)
+            self.c_checkbox.setChecked(True)
+            self.z_checkbox.setChecked(True)
+            self.y_checkbox.setChecked(True)
+            self.x_checkbox.setChecked(True)
 
     def get_model_weights(self):
 
@@ -582,7 +606,7 @@ class SegmentationWidget(QMainWindow):
                 optimizer, lr_lambda=lambda_, last_epoch=iteration - 1
             )
 
-            train_loss, prediction = train_iteration(
+            train_loss, oce_loss, prediction = train_iteration(
                 batch,
                 model=model,
                 criterion=criterion,
