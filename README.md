@@ -29,7 +29,13 @@ pip install -e .
 
 ### Getting Started
 
+Run the following commands in a terminal window
+```
+conda activate napari-cellulus
+napari
+```
 
+Next, select `Cellulus` from Plugins drop-down menu.
 
 ### Citation
 
@@ -49,4 +55,4 @@ If you find our work useful in your research, please consider citing:
 
 ### Issues
 
-If you encounter any problems, please **[file an issue]** along with a description.
+If you encounter any problems, please **[file an issue](https://github.com/funkelab/napari-cellulus/issues)** along with a description.
