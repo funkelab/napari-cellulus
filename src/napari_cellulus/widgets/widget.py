@@ -1,5 +1,5 @@
-import os
 import time
+from pathlib import Path
 
 import gunpowder as gp
 import napari
@@ -452,7 +452,7 @@ class SegmentationWidget(QMainWindow):
                 "iterations": self.iterations,
                 "losses": self.losses,
             }
-            filename = os.path.join("models", "last.pth")
+            filename = Path("models") / "last.pth"
             torch.save(state, filename)
             self.worker.quit()
 
@@ -508,8 +508,8 @@ class SegmentationWidget(QMainWindow):
             control_point_jitter=train_config.control_point_jitter,
         )
 
-        if not os.path.exists("models"):
-            os.makedirs("models")
+        if not Path("models").exists():
+            Path("models").mkdir()
 
         # create train dataloader
         dataloader = torch.utils.data.DataLoader(
