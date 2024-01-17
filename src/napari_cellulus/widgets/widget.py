@@ -407,26 +407,31 @@ class SegmentationWidget(QMainWindow):
 
         self.update_mode(self.sender())
         global model_config
+        if model_config is None:
+            model_config = ModelConfig(
+                num_fmaps=int(self.fmaps_line.text()),
+                fmap_inc_factor=int(self.fmaps_increase_line.text()),
+            )
         fname, _ = QFileDialog.getOpenFileName(
-            self, "Browse to model weights", "models/last.pth"
+            self, "Browse to model weights", "/tmp/models/last.pth"
         )
+
         model_config.checkpoint = fname
 
     def save_model_weights(self):
 
         global model, optimizer, scheduler
         self.update_mode(self.sender())
-        QFileDialog.getSaveFileName(self, "Save model weights")
-        # if self.mode =='configuring':
-        #    state = {
-        #        "iteration": self.iterations[-1],
-        #        "model_state_dict": model.state_dict(),
-        #        "optim_state_dict": optimizer.state_dict(),
-        #        "iterations": self.iterations,
-        #        "losses": self.losses,
-        #    }
-        #    torch.save(state, filename)
-        #    self.worker.quit()
+        state = {
+            "iteration": self.iterations[-1],
+            "model_state_dict": model.state_dict(),
+            "optim_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "iterations": self.iterations,
+            "losses": self.losses,
+        }
+        filename, _ = QFileDialog.getSaveFileName(self, "Save model weights")
+        torch.save(state, filename)
 
     def prepare_for_training(self):
 
