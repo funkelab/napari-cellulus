@@ -445,10 +445,12 @@ class SegmentationWidget(QMainWindow):
             max_iterations=int(self.max_iterations_line.text()),
             device=self.device_combo_box.currentText(),
         )
-        model_config = ModelConfig(
-            num_fmaps=int(self.fmaps_line.text()),
-            fmap_inc_factor=int(self.fmaps_increase_line.text()),
-        )
+
+        if model_config is None:
+            model_config = ModelConfig(
+                num_fmaps=int(self.fmaps_line.text()),
+                fmap_inc_factor=int(self.fmaps_increase_line.text()),
+            )
 
         self.update_mode(self.sender())
 
@@ -477,6 +479,9 @@ class SegmentationWidget(QMainWindow):
             self.mode = "training"
             self.predict_embeddings_button.setEnabled(False)
             self.load_model_button.setEnabled(False)
+            self.save_model_button.setEnabled(False)
+            self.binary_threshold_slider.setEnabled(False)
+            self.bandwidth_slider.setEnabled(False)
         elif (
             self.train_button.text() == "Pause" and sender == self.train_button
         ):
@@ -484,6 +489,9 @@ class SegmentationWidget(QMainWindow):
             self.mode = "configuring"
             self.predict_embeddings_button.setEnabled(True)
             self.load_model_button.setEnabled(True)
+            self.save_model_button.setEnabled(True)
+            self.binary_threshold_slider.setEnabled(False)
+            self.bandwidth_slider.setEnabled(False)
         elif (
             self.predict_embeddings_button.text() == "Predict Embeddings"
             and sender == self.predict_embeddings_button
@@ -493,6 +501,8 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setEnabled(False)
             self.save_model_button.setEnabled(False)
             self.load_model_button.setEnabled(False)
+            self.binary_threshold_slider.setEnabled(False)
+            self.bandwidth_slider.setEnabled(False)
         elif (
             self.predict_embeddings_button.text() == "Pause"
             and sender == self.predict_embeddings_button
@@ -502,6 +512,8 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setEnabled(True)
             self.save_model_button.setEnabled(True)
             self.load_model_button.setEnabled(True)
+            self.binary_threshold_slider.setEnabled(True)
+            self.bandwidth_slider.setEnabled(True)
         elif sender == self.binary_threshold_slider:
             self.mode = "segmenting"
             self.train_button.setEnabled(False)
