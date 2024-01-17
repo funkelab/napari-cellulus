@@ -210,6 +210,7 @@ class SegmentationWidget(QMainWindow):
         fmaps_increase_label.setText("Feature maps Inc. factor")
         self.fmaps_increase_line = QLineEdit(self)
         self.fmaps_increase_line.setText("3")
+        self.train_from_scratch_checkbox = QCheckBox("Train from scratch")
 
         grid_3 = QGridLayout()
         grid_3.addWidget(
@@ -228,6 +229,7 @@ class SegmentationWidget(QMainWindow):
             1,
         )
         grid_3.addWidget(self.fmaps_increase_line, 2, 1, 1, 1)
+        grid_3.addWidget(self.train_from_scratch_checkbox, 3, 0, 1, 1)
 
         model_configs_widget = QWidget()
         model_configs_widget.setLayout(grid_3)
