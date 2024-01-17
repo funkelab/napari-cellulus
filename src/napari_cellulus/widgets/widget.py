@@ -211,6 +211,7 @@ class SegmentationWidget(QMainWindow):
         self.fmaps_increase_line = QLineEdit(self)
         self.fmaps_increase_line.setText("3")
         self.train_from_scratch_checkbox = QCheckBox("Train from scratch")
+        self.train_from_scratch_checkbox.setChecked(True)
 
         grid_3 = QGridLayout()
         grid_3.addWidget(
@@ -408,7 +409,7 @@ class SegmentationWidget(QMainWindow):
 
     def save_model_weights(self):
 
-        global model, optimizer
+        global model, optimizer, scheduler
         self.update_mode(self.sender())
         QFileDialog.getSaveFileName(self, "Save model weights")
         # if self.mode =='configuring':
@@ -451,6 +452,7 @@ class SegmentationWidget(QMainWindow):
                 "iteration": self.iterations[-1],
                 "model_state_dict": model.state_dict(),
                 "optim_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
                 "iterations": self.iterations,
                 "losses": self.losses,
             }
@@ -577,19 +579,23 @@ class SegmentationWidget(QMainWindow):
             lr=train_config.initial_learning_rate,
         )
 
-        # set scheduler:
-
         def lambda_(iteration):
             return pow((1 - ((iteration) / train_config.max_iterations)), 0.9)
 
-        # resume training
-        if len(self.iterations) == 0:
-            start_iteration = 0
+        if self.train_from_scratch_checkbox.isChecked():
+            # train from scratch
+            model_config.checkpoint = None
         else:
-            start_iteration = self.iterations[-1]
+            if (Path("models") / "last.pth").exists():
+                model_config.checkpoint = Path("models") / "last.pth"
+            else:
+                model_config.checkpoint = None
 
         if model_config.checkpoint is None:
-            pass
+            start_iteration = 0
+            self.losses = []
+            self.iterations = []
+            self.losses_widget.clear()
         else:
             print(f"Resuming model from {model_config.checkpoint}")
             state = torch.load(model_config.checkpoint, map_location=device)
