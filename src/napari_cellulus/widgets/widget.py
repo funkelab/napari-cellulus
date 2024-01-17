@@ -211,7 +211,7 @@ class SegmentationWidget(QMainWindow):
         self.fmaps_increase_line = QLineEdit(self)
         self.fmaps_increase_line.setText("3")
         self.train_from_scratch_checkbox = QCheckBox("Train from scratch")
-        self.train_from_scratch_checkbox.setChecked(True)
+        self.train_from_scratch_checkbox.setChecked(False)
 
         grid_3 = QGridLayout()
         grid_3.addWidget(
@@ -383,9 +383,14 @@ class SegmentationWidget(QMainWindow):
             self.y_checkbox.setChecked(True)
             self.x_checkbox.setChecked(True)
         elif len(im_shape) == 3:
-            self.z_checkbox.setChecked(True)
-            self.y_checkbox.setChecked(True)
-            self.x_checkbox.setChecked(True)
+            if im_shape[0] > 5:
+                self.z_checkbox.setChecked(True)
+                self.y_checkbox.setChecked(True)
+                self.x_checkbox.setChecked(True)
+            else:
+                self.c_checkbox.setChecked(True)
+                self.y_checkbox.setChecked(True)
+                self.x_checkbox.setChecked(True)
         elif len(im_shape) == 4:
             self.c_checkbox.setChecked(True)
             self.z_checkbox.setChecked(True)
@@ -456,7 +461,7 @@ class SegmentationWidget(QMainWindow):
                 "iterations": self.iterations,
                 "losses": self.losses,
             }
-            filename = Path("models") / "last.pth"
+            filename = Path("/tmp/models") / "last.pth"
             torch.save(state, filename)
             self.worker.quit()
 
@@ -512,8 +517,8 @@ class SegmentationWidget(QMainWindow):
             control_point_jitter=train_config.control_point_jitter,
         )
 
-        if not Path("models").exists():
-            Path("models").mkdir()
+        if not Path("/tmp/models").exists():
+            Path("/tmp/models").mkdir()
 
         # create train dataloader
         dataloader = torch.utils.data.DataLoader(
@@ -586,10 +591,12 @@ class SegmentationWidget(QMainWindow):
             # train from scratch
             model_config.checkpoint = None
         else:
-            if (Path("models") / "last.pth").exists():
-                model_config.checkpoint = Path("models") / "last.pth"
+            if model_config.checkpoint is None:
+                if (Path("/tmp/models/") / "last.pth").exists():
+                    model_config.checkpoint = Path("/tmp/models") / "last.pth"
             else:
-                model_config.checkpoint = None
+                pass
+                # use existing checkpoint
 
         if model_config.checkpoint is None:
             start_iteration = 0
