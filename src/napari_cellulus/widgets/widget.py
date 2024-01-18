@@ -16,6 +16,7 @@ from cellulus.utils.mean_shift import mean_shift_segmentation
 
 # widget stuff
 from napari.qt.threading import thread_worker
+from napari.utils.events import Event
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
     QCheckBox,
@@ -52,6 +53,8 @@ model = None
 optimizer = None
 scheduler = None
 dataset = None
+thresholds = []
+bandwidths = []
 
 
 class Model(nn.Module):
@@ -83,6 +86,7 @@ class SegmentationWidget(QMainWindow):
         self.widget = QWidget()
         self.scroll = QScrollArea()
         self.viewer = napari_viewer
+        self.viewer.dims.events.current_step.connect(self.update_sliders)
 
         # Initialize `train_config` and `model_config`
 
@@ -291,9 +295,7 @@ class SegmentationWidget(QMainWindow):
         collapsible_inference_configs.addWidget(inference_widget)
 
         # Initialize Predict Embeddings Button
-        self.predict_embeddings_button = QPushButton(
-            "Predict Embeddings", self
-        )
+        self.predict_embeddings_button = QPushButton("Predict", self)
         self.predict_embeddings_button.clicked.connect(
             self.prepare_for_prediction
         )
@@ -309,6 +311,12 @@ class SegmentationWidget(QMainWindow):
             Qt.Orientation.Horizontal
         )
         self.binary_threshold_slider.setRange(0, 100)
+
+        # self.binary_threshold_slider
+        # currentTextChanged.connect(
+        #     self.update_axis_layout
+        # )
+
         self.binary_threshold_slider.sliderReleased.connect(
             self.prepare_for_segmenting
         )
@@ -376,6 +384,14 @@ class SegmentationWidget(QMainWindow):
             if checkbox.isChecked():
                 names.append(name)
         return names
+
+    def update_sliders(self, event: Event):
+        if self.s_checkbox.isChceked():
+            shape = event.value
+            sample_index = shape[0]
+            self.binary_threshold_slider.setValue(thresholds[sample_index])
+        else:
+            self.binary_threshold_slider.setValue(thresholds[0])
 
     def update_axis_layout(self):
         im_shape = self.raw_selector.value.data.shape
@@ -493,7 +509,7 @@ class SegmentationWidget(QMainWindow):
             self.binary_threshold_slider.setEnabled(False)
             self.bandwidth_slider.setEnabled(False)
         elif (
-            self.predict_embeddings_button.text() == "Predict Embeddings"
+            self.predict_embeddings_button.text() == "Predict"
             and sender == self.predict_embeddings_button
         ):
             self.predict_embeddings_button.setText("Pause")
@@ -507,7 +523,7 @@ class SegmentationWidget(QMainWindow):
             self.predict_embeddings_button.text() == "Pause"
             and sender == self.predict_embeddings_button
         ):
-            self.predict_embeddings_button.setText("Predict Embeddings")
+            self.predict_embeddings_button.setText("Predict")
             self.mode = "configuring"
             self.train_button.setEnabled(True)
             self.save_model_button.setEnabled(True)
@@ -676,6 +692,7 @@ class SegmentationWidget(QMainWindow):
                 self.viewer.add_image(data, **metadata)
             elif layer_type == "labels":
                 self.viewer.add_labels(data.astype(int), **metadata)
+
         self.update_mode(self.predict_embeddings_button)
         self.worker.quit()
 
@@ -714,7 +731,7 @@ class SegmentationWidget(QMainWindow):
 
     @thread_worker
     def predict(self):
-        global inference_config, model, dataset
+        global inference_config, model, dataset, thresholds
 
         raw_image = self.raw_selector.value
 
@@ -856,6 +873,7 @@ class SegmentationWidget(QMainWindow):
             embeddings_std = embeddings[-1, ...]
             threshold = threshold_otsu(embeddings_std)
             print(f"Threshold for sample {sample} is {threshold}")
+            thresholds.append(threshold)
             binary_mask = embeddings_std < threshold
             foreground[sample, 0, ...] = binary_mask
 
@@ -889,6 +907,14 @@ class SegmentationWidget(QMainWindow):
                 distance_background < inference_config.shrink_distance
             ] = 0
             pp_labels[sample, 0, ...] = segmentation
+
+        # update threshold and bandwidth
+        if self.s_checkbox.isChecked():
+            pass  # TODO
+        else:
+            self.binary_threshold_slider.setValue(thresholds[0])
+        self.bandwidth_slider.setValue(inference_config.bandwidth)
+
         return (
             prediction_layers
             + [(foreground, {"name": "Foreground"}, "labels")]
