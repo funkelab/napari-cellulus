@@ -301,45 +301,51 @@ class SegmentationWidget(QMainWindow):
             self.prepare_for_prediction
         )
 
-        bandwidth_label = QLabel(self)
-        bandwidth_label.setText("Bandwidth")
-        self.bandwidth_slider = QLabeledDoubleSlider(Qt.Orientation.Horizontal)
-        self.bandwidth_slider.setRange(0, 100)
-
         binary_threshold_label = QLabel(self)
         binary_threshold_label.setText("Threshold")
         self.binary_threshold_slider = QLabeledDoubleSlider(
             Qt.Orientation.Horizontal
         )
         self.binary_threshold_slider.setRange(0, 100)
-
-        # self.binary_threshold_slider
-        # currentTextChanged.connect(
-        #     self.update_axis_layout
-        # )
-
+        self.binary_threshold_slider.setSingleStep(0.01)
         self.binary_threshold_slider.sliderReleased.connect(
-            self.prepare_for_segmenting
+            self.prepare_for_binary_thresholding
+        )
+        self.binary_threshold_slider.valueChanged.connect(
+            self.prepare_for_binary_thresholding
         )
 
-        filter_objects_label = QLabel(self)
-        filter_objects_label.setText("Remove small objects")
-        self.filter_objects_slider = QLabeledDoubleSlider(
+        bandwidth_label = QLabel(self)
+        bandwidth_label.setText("Bandwidth")
+        self.bandwidth_slider = QLabeledDoubleSlider(Qt.Orientation.Horizontal)
+        self.bandwidth_slider.setRange(0, 100)
+        self.bandwidth_slider.setSingleStep(0.01)
+        self.bandwidth_slider.sliderReleased.connect(
+            self.prepare_for_clustering
+        )
+        self.bandwidth_slider.valueChanged.connect(self.prepare_for_clustering)
+
+        filter_small_objects_label = QLabel(self)
+        filter_small_objects_label.setText("Remove small objects")
+        self.filter_small_objects_slider = QLabeledDoubleSlider(
             Qt.Orientation.Horizontal
         )
-        self.filter_objects_slider.setRange(0, 100)
-        self.filter_objects_slider.sliderReleased.connect(
+        self.filter_small_objects_slider.setRange(0, 100)
+        self.filter_small_objects_slider.setSingleStep(1)
+        self.filter_small_objects_slider.sliderReleased.connect(
             self.prepare_for_filtering_small_objects
         )
-
+        self.filter_small_objects_slider.valueChanged.connect(
+            self.prepare_for_filtering_small_objects
+        )
         grid_6 = QGridLayout()
 
         grid_6.addWidget(binary_threshold_label, 0, 0, 1, 1)
         grid_6.addWidget(self.binary_threshold_slider, 0, 1, 1, 1)
         grid_6.addWidget(bandwidth_label, 1, 0, 1, 1)
         grid_6.addWidget(self.bandwidth_slider, 1, 1, 1, 1)
-        grid_6.addWidget(filter_objects_label, 2, 0, 1, 1)
-        grid_6.addWidget(self.filter_objects_slider, 2, 1, 1, 1)
+        grid_6.addWidget(filter_small_objects_label, 2, 0, 1, 1)
+        grid_6.addWidget(self.filter_small_objects_slider, 2, 1, 1, 1)
 
         segmentation_widget = QWidget()
         segmentation_widget.setLayout(grid_6)
@@ -547,15 +553,28 @@ class SegmentationWidget(QMainWindow):
             self.binary_threshold_slider.setEnabled(True)
             self.bandwidth_slider.setEnabled(True)
         elif sender == self.binary_threshold_slider:
-            self.mode = "segmenting"
+            self.mode = "binary_thresholding"
             self.train_button.setEnabled(False)
             self.save_model_button.setEnabled(False)
             self.load_model_button.setEnabled(False)
-        elif sender == self.filter_objects_slider:
+        elif sender == self.bandwidth_slider:
+            self.mode = "clustering"
+            self.train_button.setEnabled(False)
+            self.save_model_button.setEnabled(False)
+            self.load_model_button.setEnabled(False)
+        elif (
+            sender == self.filter_small_objects_slider
+            and self.mode == "configuring"
+        ):
             self.mode = "filtering"
             self.train_button.setEnabled(False)
             self.save_model_button.setEnabled(False)
             self.load_model_button.setEnabled(False)
+        elif (
+            sender == self.filter_small_objects_slider
+            and self.mode == "filtering"
+        ):
+            self.mode = "configuring"
 
     @thread_worker
     def train(self, train_config, model_config):
@@ -781,8 +800,10 @@ class SegmentationWidget(QMainWindow):
                     * np.pi
                     * (float(self.object_size_line.text()) ** 3)
                 )
-        self.filter_objects_slider.setRange(0, 10 * inference_config.min_size)
-        self.filter_objects_slider.setValue(inference_config.min_size)
+        self.filter_small_objects_slider.setRange(
+            0, 10 * inference_config.min_size
+        )
+        self.filter_small_objects_slider.setValue(inference_config.min_size)
 
         device = torch.device(self.device_combo_box.currentText())
 
@@ -911,7 +932,7 @@ class SegmentationWidget(QMainWindow):
             binary_mask = embeddings_std < threshold
             foreground[sample, 0, ...] = binary_mask
 
-        labels = np.zeros_like(prediction_data[:, 0:1, ...], dtype=np.uint64)
+        labels = np.zeros_like(prediction_data[:, 0:1, ...], dtype=np.uint16)
         for sample in range(prediction_data.shape[0]):
             embeddings = prediction_data[sample]
             embeddings_std = embeddings[-1, ...]
@@ -928,19 +949,19 @@ class SegmentationWidget(QMainWindow):
             labels[sample, 0, ...] = segmentation
 
         pp_labels = np.zeros_like(
-            prediction_data[:, 0:1, ...], dtype=np.uint64
+            prediction_data[:, 0:1, ...], dtype=np.uint16
         )
         for sample in range(prediction_data.shape[0]):
-            segmentation = labels[sample, 0]
-            distance_foreground = dtedt(segmentation == 0)
+            labels_sample = labels[sample, 0].copy()
+            distance_foreground = dtedt(labels_sample == 0)
             expanded_mask = (
                 distance_foreground < inference_config.grow_distance
             )
             distance_background = dtedt(expanded_mask)
-            segmentation[
+            labels_sample[
                 distance_background < inference_config.shrink_distance
             ] = 0
-            pp_labels[sample, 0, ...] = segmentation
+            pp_labels[sample, 0, ...] = labels_sample
 
         # update threshold and bandwidth
         if self.s_checkbox.isChecked():
@@ -964,30 +985,142 @@ class SegmentationWidget(QMainWindow):
             f"Chosen User threshold is {threshold}. Chosen bandwidth is {bandwidth}"
         )
 
+    def prepare_for_binary_thresholding(self):
+        self.worker = self.binary_threshold()
+        self.worker.returned.connect(self.on_return_binary_thresholding)
+        self.worker.start()
+
+    @thread_worker
+    def binary_threshold(self):
+        threshold = self.binary_threshold_slider.value()
+        print(
+            f"Binary Threshold {threshold} will be used to obtain the foreground!"
+        )
+        embeddings_std = self.viewer.layers["std"].data
+        binary_mask = embeddings_std < threshold
+        return [(binary_mask, {"name": "Foreground"}, "labels")]
+
+    def on_return_binary_thresholding(self, layers):
+        # Describes what happens once worker is completed
+        data, _, _ = layers[0]
+        self.viewer.layers["Foreground"].data = data.astype(np.uint16)
+        self.prepare_for_clustering()
+        self.prepare_for_growing_shrinking()
+        self.filter_small_objects
+        self.update_mode(self.binary_threshold_slider)
+        self.worker.quit()
+
+    def prepare_for_clustering(self):
+        self.worker = self.cluster()
+        self.worker.returned.connect(self.on_return_clustering)
+        self.worker.start()
+
+    @thread_worker
+    def cluster(self):
+        print(
+            f"Bandwidth {self.bandwidth_slider.value()} will be used to perform the clustering!"
+        )
+        if "offset-x" in self.viewer.layers:
+            embeddings_x = self.viewer.layers["offset-x"].data
+            embeddings_y = self.viewer.layers["offset-y"].data
+            embeddings_std = self.viewer.layers["std"].data[0, 0]  # y x
+            if "offset-z" in self.viewer.layers:
+                embeddings_z = self.viewer.layers["offset-z"].data
+                embeddings_mean = np.concatenate(
+                    (embeddings_x, embeddings_y, embeddings_z), 1
+                )  # s 3 z y x
+            else:
+                embeddings_mean = np.concatenate(
+                    (embeddings_x, embeddings_y), 1
+                )  # s 3 y x
+
+            threshold = self.binary_threshold_slider.value()
+            segmentation = mean_shift_segmentation(
+                embeddings_mean,
+                embeddings_std,
+                self.bandwidth_slider.value(),
+                inference_config.min_size,
+                inference_config.reduction_probability,
+                threshold,
+            )
+            return [(segmentation, {"name": "Segmentation"}, "labels")]
+
+    def on_return_clustering(self, layers):
+        # Describes what happens once worker is completed
+        if layers is not None:
+            data, _, _ = layers[0]
+            self.viewer.layers["Segmentation"].data = data[
+                np.newaxis, np.newaxis, ...
+            ].astype(np.uint16)
+
+            # Post-processing again
+            self.prepare_for_growing_shrinking()
+
+            # Removing small objects
+            self.prepare_for_filtering_small_objects()
+            self.update_mode(self.filter_small_objects_slider)
+        self.worker.quit()
+
+    def prepare_for_growing_shrinking(self):
+        self.worker = self.grow_shrink()
+        self.worker.returned.connect(self.on_return_growing_shrinking)
+        self.worker.start()
+
+    @thread_worker
+    def grow_shrink(self):
+        global inference_config
+        print("Growing and shrinking the segmentation ...")
+        if "Segmentation" in self.viewer.layers:
+            segmentation = (
+                self.viewer.layers["Segmentation"].data[0, 0].astype(np.uint16)
+            )
+            distance_foreground = dtedt(segmentation == 0)
+            expanded_mask = (
+                distance_foreground < inference_config.grow_distance
+            )
+            distance_background = dtedt(expanded_mask)
+            segmentation[
+                distance_background < inference_config.shrink_distance
+            ] = 0
+            return [(segmentation, {"name": "Post_processed"}, "labels")]
+
+    def on_return_growing_shrinking(self, layers):
+        if layers is not None:
+            # Describes what happens once worker is completed
+            data, _, _ = layers[0]
+            self.viewer.layers["Post_processed"].data = data[
+                np.newaxis, np.newaxis, ...
+            ].astype(np.uint16)
+            self.filter_small_objects()
+            self.update_mode(self.grow_shrink)
+        self.worker.quit()
+
     def prepare_for_filtering_small_objects(self):
-        self.update_mode(self.sender())
-        if self.mode == "filtering":
-            self.worker = self.filter_small_objects()
-            self.worker.returned.connect(self.on_return_filtering)
-            self.worker.start()
+        self.worker = self.filter_small_objects()
+        self.worker.returned.connect(self.on_return_filtering)
+        self.worker.start()
 
     @thread_worker
     def filter_small_objects(self):
-        filter_objects_value = self.filter_objects_slider.value()
-        print(f"Objects below size {filter_objects_value} will be removed!")
-        seg = self.viewer.layers["Segmentation"].data
-        pp_seg = np.zeros_like(seg)
-        ids = np.unique(seg)
-        ids = ids[ids != 0]
-        for id_ in tqdm(ids):
-            if np.sum(seg == id_) > filter_objects_value:
-                pp_seg[seg == id_] = id_
+        if "Segmentation" in self.viewer.layers:
+            filter_objects_value = self.filter_small_objects_slider.value()
+            print(
+                f"Objects below size {filter_objects_value} will be removed!"
+            )
+            seg = self.viewer.layers["Segmentation"].data
+            pp_seg = np.zeros_like(seg)
+            ids = np.unique(seg)
+            ids = ids[ids != 0]
+            for id_ in tqdm(ids):
+                if np.sum(seg == id_) > filter_objects_value:
+                    pp_seg[seg == id_] = id_
 
-        return [(pp_seg, {"name": "Post_processed"}, "labels")]
+            return [(pp_seg, {"name": "Post_processed"}, "labels")]
 
     def on_return_filtering(self, layers):
-        # Describes what happens once worker is completed
-        data, _, _ = layers[0]
-        self.viewer.layers["Post_processed"].data = data.astype(int)
-        self.update_mode(self.filter_objects_slider)
+        if layers is not None:
+            # Describes what happens once worker is completed
+            data, _, _ = layers[0]
+            self.viewer.layers["Post_processed"].data = data.astype(np.uint16)
+            self.update_mode(self.filter_small_objects_slider)
         self.worker.quit()
