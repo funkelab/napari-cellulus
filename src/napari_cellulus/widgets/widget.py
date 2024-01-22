@@ -37,6 +37,7 @@ from scipy.ndimage import distance_transform_edt as dtedt
 from skimage.filters import threshold_otsu
 from superqt import QCollapsible, QLabeledDoubleSlider
 from torch import nn
+from tqdm import tqdm
 
 from ..dataset import NapariDataset
 from ..gp.nodes.napari_image_source import NapariImageSource
@@ -327,6 +328,9 @@ class SegmentationWidget(QMainWindow):
             Qt.Orientation.Horizontal
         )
         self.filter_objects_slider.setRange(0, 100)
+        self.filter_objects_slider.sliderReleased.connect(
+            self.prepare_for_filtering_small_objects
+        )
 
         grid_6 = QGridLayout()
 
@@ -547,6 +551,11 @@ class SegmentationWidget(QMainWindow):
             self.train_button.setEnabled(False)
             self.save_model_button.setEnabled(False)
             self.load_model_button.setEnabled(False)
+        elif sender == self.filter_objects_slider:
+            self.mode = "filtering"
+            self.train_button.setEnabled(False)
+            self.save_model_button.setEnabled(False)
+            self.load_model_button.setEnabled(False)
 
     @thread_worker
     def train(self, train_config, model_config):
@@ -730,15 +739,12 @@ class SegmentationWidget(QMainWindow):
     def prepare_for_segmenting(self):
         global inference_config
 
-        print("=" * 10)
-        print(self.sender())
-        print(self.mode)
-
         # update mode
         self.update_mode(self.sender())
 
         if self.mode == "segmenting":
             self.worker = self.segment()
+
             self.worker.start()
 
     @thread_worker
@@ -747,16 +753,39 @@ class SegmentationWidget(QMainWindow):
 
         raw_image = self.raw_selector.value
 
+        num_spatial_dims = dataset.num_spatial_dims
+        num_channels = dataset.num_channels
+        spatial_dims = dataset.spatial_dims
+        num_samples = dataset.num_samples
+        num_dims = dataset.num_dims
+        num_channels_temp = 1 if num_channels == 0 else num_channels
+
         if inference_config.bandwidth is None:
             inference_config.bandwidth = int(
                 0.5 * float(self.object_size_line.text())
             )
+
         if inference_config.min_size is None:
-            inference_config.min_size = int(
-                0.1 * np.pi * (float(self.object_size_line.text()) ** 2) / 4
-            )
+            if num_spatial_dims == 2:
+                inference_config.min_size = int(
+                    0.1
+                    * np.pi
+                    * (float(self.object_size_line.text()) ** 2)
+                    / 4
+                )
+            elif num_spatial_dims == 3:
+                inference_config.min_size = int(
+                    0.1
+                    * 4.0
+                    / 3.0
+                    * np.pi
+                    * (float(self.object_size_line.text()) ** 3)
+                )
+        self.filter_objects_slider.setRange(0, 10 * inference_config.min_size)
+        self.filter_objects_slider.setValue(inference_config.min_size)
 
         device = torch.device(self.device_combo_box.currentText())
+
         model.set_infer(
             p_salt_pepper=inference_config.p_salt_pepper,
             num_infer_iterations=inference_config.num_infer_iterations,
@@ -765,13 +794,6 @@ class SegmentationWidget(QMainWindow):
 
         # check if dataset is not None.
         # user might directly go to inference ...
-
-        num_spatial_dims = dataset.num_spatial_dims
-        num_channels = dataset.num_channels
-        spatial_dims = dataset.spatial_dims
-        num_samples = dataset.num_samples
-        num_dims = dataset.num_dims
-        num_channels_temp = 1 if num_channels == 0 else num_channels
 
         crop_size = (inference_config.crop_size[0],) * num_spatial_dims
 
@@ -931,7 +953,7 @@ class SegmentationWidget(QMainWindow):
             prediction_layers
             + [(foreground, {"name": "Foreground"}, "labels")]
             + [(labels, {"name": "Segmentation"}, "labels")]
-            + [(pp_labels, {"name": "Post Processed"}, "labels")]
+            + [(pp_labels, {"name": "Post_processed"}, "labels")]
         )
 
     @thread_worker
@@ -941,3 +963,31 @@ class SegmentationWidget(QMainWindow):
         print(
             f"Chosen User threshold is {threshold}. Chosen bandwidth is {bandwidth}"
         )
+
+    def prepare_for_filtering_small_objects(self):
+        self.update_mode(self.sender())
+        if self.mode == "filtering":
+            self.worker = self.filter_small_objects()
+            self.worker.returned.connect(self.on_return_filtering)
+            self.worker.start()
+
+    @thread_worker
+    def filter_small_objects(self):
+        filter_objects_value = self.filter_objects_slider.value()
+        print(f"Objects below size {filter_objects_value} will be removed!")
+        seg = self.viewer.layers["Segmentation"].data
+        pp_seg = np.zeros_like(seg)
+        ids = np.unique(seg)
+        ids = ids[ids != 0]
+        for id_ in tqdm(ids):
+            if np.sum(seg == id_) > filter_objects_value:
+                pp_seg[seg == id_] = id_
+
+        return [(pp_seg, {"name": "Post_processed"}, "labels")]
+
+    def on_return_filtering(self, layers):
+        # Describes what happens once worker is completed
+        data, _, _ = layers[0]
+        self.viewer.layers["Post_processed"].data = data.astype(int)
+        self.update_mode(self.filter_objects_slider)
+        self.worker.quit()
