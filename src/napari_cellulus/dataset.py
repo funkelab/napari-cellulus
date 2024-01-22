@@ -20,10 +20,10 @@ class NapariDataset(IterableDataset):  # type: ignore
     ):
         """A dataset that serves random samples from a zarr container.
 
-        Args:
+        Parameters
+        ----------
 
             layer:
-
                 The napari layer to use.
                 The data should have shape `(s, c, [t,] [z,] y, x)`, where
                 `s` = # of samples, `c` = # of channels, `t` = # of frames, and
@@ -32,11 +32,9 @@ class NapariDataset(IterableDataset):  # type: ignore
                 axes, e.g., `["s", "c", "y", "x"]` for a 2D dataset.
 
             axis_names:
-
                 The names of the axes in the napari layer.
 
             crop_size:
-
                 The size of data crops used during training (distinct from the
                 "patch size" of the method: from each crop, multiple patches
                 will be randomly selected and the loss computed on them). This
@@ -44,12 +42,10 @@ class NapariDataset(IterableDataset):  # type: ignore
                 the OCEs.
 
             control_point_spacing:
-
                 The distance in pixels between control points used for elastic
                 deformation of the raw data.
 
             control_point_jitter:
-
                 How much to jitter the control points for elastic deformation
                 of the raw data, given as the standard deviation of a normal
                 distribution with zero mean.
