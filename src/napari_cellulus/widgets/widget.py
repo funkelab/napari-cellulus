@@ -321,11 +321,21 @@ class SegmentationWidget(QMainWindow):
             self.prepare_for_segmenting
         )
 
+        filter_objects_label = QLabel(self)
+        filter_objects_label.setText("Remove small objects")
+        self.filter_objects_slider = QLabeledDoubleSlider(
+            Qt.Orientation.Horizontal
+        )
+        self.filter_objects_slider.setRange(0, 100)
+
         grid_6 = QGridLayout()
-        grid_6.addWidget(bandwidth_label, 0, 0, 1, 1)
-        grid_6.addWidget(self.bandwidth_slider, 0, 1, 1, 1)
-        grid_6.addWidget(binary_threshold_label, 1, 0, 1, 1)
-        grid_6.addWidget(self.binary_threshold_slider, 1, 1, 1, 1)
+
+        grid_6.addWidget(binary_threshold_label, 0, 0, 1, 1)
+        grid_6.addWidget(self.binary_threshold_slider, 0, 1, 1, 1)
+        grid_6.addWidget(bandwidth_label, 1, 0, 1, 1)
+        grid_6.addWidget(self.bandwidth_slider, 1, 1, 1, 1)
+        grid_6.addWidget(filter_objects_label, 2, 0, 1, 1)
+        grid_6.addWidget(self.filter_objects_slider, 2, 1, 1, 1)
 
         segmentation_widget = QWidget()
         segmentation_widget.setLayout(grid_6)
@@ -386,12 +396,14 @@ class SegmentationWidget(QMainWindow):
         return names
 
     def update_sliders(self, event: Event):
-        if self.s_checkbox.isChceked():
-            shape = event.value
-            sample_index = shape[0]
-            self.binary_threshold_slider.setValue(thresholds[sample_index])
-        else:
-            self.binary_threshold_slider.setValue(thresholds[0])
+        global thresholds
+        if len(thresholds) > 0:
+            if self.s_checkbox.isChecked():
+                shape = event.value
+                sample_index = shape[0]
+                self.binary_threshold_slider.setValue(thresholds[sample_index])
+            else:
+                self.binary_threshold_slider.setValue(thresholds[0])
 
     def update_axis_layout(self):
         im_shape = self.raw_selector.value.data.shape
@@ -925,4 +937,7 @@ class SegmentationWidget(QMainWindow):
     @thread_worker
     def segment(self):
         threshold = self.binary_threshold_slider.value()
-        print(f"Threshold is {threshold}")
+        bandwidth = self.bandwidth_slider.value()
+        print(
+            f"Chosen User threshold is {threshold}. Chosen bandwidth is {bandwidth}"
+        )
