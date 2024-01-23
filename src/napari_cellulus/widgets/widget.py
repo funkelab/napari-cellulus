@@ -56,6 +56,7 @@ scheduler = None
 dataset = None
 thresholds = []
 bandwidths = []
+min_object_sizes = []
 
 
 class Model(nn.Module):
@@ -406,7 +407,7 @@ class SegmentationWidget(QMainWindow):
         return names
 
     def update_sliders(self, event: Event):
-        global thresholds
+        global thresholds, bandwidths, min_object_sizes
         if len(thresholds) > 0:
             if self.s_checkbox.isChecked():
                 shape = event.value
@@ -414,6 +415,13 @@ class SegmentationWidget(QMainWindow):
                 self.binary_threshold_slider.setValue(thresholds[sample_index])
             else:
                 self.binary_threshold_slider.setValue(thresholds[0])
+        if len(bandwidths) > 0:
+            if self.s_checkbox.isChecked():
+                shape = event.value
+                sample_index = shape[0]
+                self.bandwidth_slider.setValue(bandwidths[sample_index])
+            else:
+                self.bandwidth_slider.setValue(bandwidths[0])
 
     def update_axis_layout(self):
         im_shape = self.raw_selector.value.data.shape
@@ -776,7 +784,6 @@ class SegmentationWidget(QMainWindow):
         num_channels = dataset.num_channels
         spatial_dims = dataset.spatial_dims
         num_samples = dataset.num_samples
-        num_dims = dataset.num_dims
         num_channels_temp = 1 if num_channels == 0 else num_channels
 
         if inference_config.bandwidth is None:
@@ -807,6 +814,7 @@ class SegmentationWidget(QMainWindow):
 
         device = torch.device(self.device_combo_box.currentText())
 
+        model.eval()
         model.set_infer(
             p_salt_pepper=inference_config.p_salt_pepper,
             num_infer_iterations=inference_config.num_infer_iterations,
@@ -837,13 +845,6 @@ class SegmentationWidget(QMainWindow):
             )
 
         voxel_size = (1,) * (num_spatial_dims)
-        model.eval()
-        model.set_infer(
-            p_salt_pepper=inference_config.p_salt_pepper,
-            num_infer_iterations=inference_config.num_infer_iterations,
-            device=device,
-        )
-
         input_size = gp.Coordinate(input_shape[2:]) * gp.Coordinate(voxel_size)
         output_size = gp.Coordinate(output_shape[2:]) * gp.Coordinate(
             voxel_size
@@ -870,13 +871,14 @@ class SegmentationWidget(QMainWindow):
             raw,
             gp.ArraySpec(
                 gp.Roi(
-                    (0,) * num_dims,
-                    raw_image.data.shape,
+                    (0,) * num_spatial_dims,
+                    raw_image.data.shape[-num_spatial_dims:],
                 ),
-                voxel_size=(1,) * num_dims,
+                voxel_size=(1,) * num_spatial_dims,
             ),
             spatial_dims,
         )
+
         if num_samples == 0:
             pipeline += (
                 gp.Pad(raw, context, mode="reflect")
@@ -946,6 +948,7 @@ class SegmentationWidget(QMainWindow):
                 inference_config.reduction_probability,
                 threshold,
             )
+            bandwidths.append(inference_config.bandwidth)
             labels[sample, 0, ...] = segmentation
 
         pp_labels = np.zeros_like(
@@ -965,7 +968,11 @@ class SegmentationWidget(QMainWindow):
 
         # update threshold and bandwidth
         if self.s_checkbox.isChecked():
-            pass  # TODO
+            # print("+"*10)
+            # print(self.viewer.dims.current_step.value)
+            # print("+"*10)
+            # get current sample
+            pass
         else:
             self.binary_threshold_slider.setValue(thresholds[0])
         self.bandwidth_slider.setValue(inference_config.bandwidth)
