@@ -758,7 +758,11 @@ class SegmentationWidget(QMainWindow):
                 self.viewer.add_image(data, **metadata)
             elif layer_type == "labels":
                 self.viewer.add_labels(data.astype(int), **metadata)
-
+        self.viewer.layers["Segmentation"].visible = False
+        self.viewer.layers["OCE (y)"].visible = False
+        self.viewer.layers["OCE (x)"].visible = False
+        self.viewer.layers["Uncertainty"].visible = False
+        self.viewer.layers["Foreground"].visible = False
         self.update_mode(self.predict_embeddings_button)
         self.worker.quit()
 
@@ -929,9 +933,9 @@ class SegmentationWidget(QMainWindow):
             (
                 prediction_data[:, i : i + 1, ...].copy(),
                 {
-                    "name": "offset-" + "zyx"[num_spatial_dims - i]
+                    "name": "OCE (" + "zyx"[num_spatial_dims - i] + ")"
                     if i < num_spatial_dims
-                    else "std",
+                    else "Uncertainty",
                     "colormap": colormaps[num_spatial_dims - i]
                     if i < num_spatial_dims
                     else "gray",
@@ -945,22 +949,22 @@ class SegmentationWidget(QMainWindow):
         foreground = np.zeros_like(prediction_data[:, 0:1, ...], dtype=bool)
         for sample in range(prediction_data.shape[0]):
             embeddings = prediction_data[sample]
-            embeddings_std = embeddings[-1, ...]
-            threshold = threshold_otsu(embeddings_std)
+            embeddings_uncertainty = embeddings[-1, ...]
+            threshold = threshold_otsu(embeddings_uncertainty)
             print(f"Threshold for sample {sample} is {threshold}")
             thresholds.append(threshold)
-            binary_mask = embeddings_std < threshold
+            binary_mask = embeddings_uncertainty < threshold
             foreground[sample, 0, ...] = binary_mask
 
         labels = np.zeros_like(prediction_data[:, 0:1, ...], dtype=np.uint16)
         for sample in range(prediction_data.shape[0]):
             embeddings = prediction_data[sample]
-            embeddings_std = embeddings[-1, ...]
+            embeddings_uncertainty = embeddings[-1, ...]
             embeddings_mean = embeddings[np.newaxis, :num_spatial_dims, ...]
-            threshold = threshold_otsu(embeddings_std)
+            threshold = threshold_otsu(embeddings_uncertainty)
             segmentation = mean_shift_segmentation(
                 embeddings_mean,
-                embeddings_std,
+                embeddings_uncertainty,
                 inference_config.bandwidth,
                 inference_config.min_size,
                 inference_config.reduction_probability,
@@ -972,6 +976,7 @@ class SegmentationWidget(QMainWindow):
         pp_labels = np.zeros_like(
             prediction_data[:, 0:1, ...], dtype=np.uint16
         )
+
         for sample in range(prediction_data.shape[0]):
             labels_sample = labels[sample, 0].copy()
             distance_foreground = dtedt(labels_sample == 0)
@@ -1021,8 +1026,8 @@ class SegmentationWidget(QMainWindow):
         print(
             f"Binary Threshold {threshold} will be used to obtain the foreground!"
         )
-        embeddings_std = self.viewer.layers["std"].data
-        binary_mask = embeddings_std < threshold
+        embeddings_uncertainty = self.viewer.layers["Uncertainty"].data
+        binary_mask = embeddings_uncertainty < threshold
         return [(binary_mask, {"name": "Foreground"}, "labels")]
 
     def on_return_binary_thresholding(self, layers):
@@ -1045,12 +1050,14 @@ class SegmentationWidget(QMainWindow):
         print(
             f"Bandwidth {self.bandwidth_slider.value()} will be used to perform the clustering!"
         )
-        if "offset-x" in self.viewer.layers:
-            embeddings_x = self.viewer.layers["offset-x"].data
-            embeddings_y = self.viewer.layers["offset-y"].data
-            embeddings_std = self.viewer.layers["std"].data[0, 0]  # y x
-            if "offset-z" in self.viewer.layers:
-                embeddings_z = self.viewer.layers["offset-z"].data
+        if "OCE (x)" in self.viewer.layers:
+            embeddings_x = self.viewer.layers["OCE (x)"].data
+            embeddings_y = self.viewer.layers["OCE (y)"].data
+            embeddings_uncertainty = self.viewer.layers["Uncertainty"].data[
+                0, 0
+            ]  # y x
+            if "OCE (z)" in self.viewer.layers:
+                embeddings_z = self.viewer.layers["OCE (z)"].data
                 embeddings_mean = np.concatenate(
                     (embeddings_x, embeddings_y, embeddings_z), 1
                 )  # s 3 z y x
@@ -1062,7 +1069,7 @@ class SegmentationWidget(QMainWindow):
             threshold = self.binary_threshold_slider.value()
             segmentation = mean_shift_segmentation(
                 embeddings_mean,
-                embeddings_std,
+                embeddings_uncertainty,
                 self.bandwidth_slider.value(),
                 inference_config.min_size,
                 inference_config.reduction_probability,
