@@ -1,4 +1,3 @@
-import time
 from pathlib import Path
 
 import gunpowder as gp
@@ -13,6 +12,7 @@ from cellulus.criterions import get_loss
 from cellulus.models import get_model
 from cellulus.train import train_iteration
 from cellulus.utils.mean_shift import mean_shift_segmentation
+from IPython.display import clear_output
 
 # widget stuff
 from napari.qt.threading import thread_worker
@@ -173,7 +173,7 @@ class SegmentationWidget(QMainWindow):
         max_iterations_label = QLabel(self)
         max_iterations_label.setText("Max iterations")
         self.max_iterations_line = QLineEdit(self)
-        self.max_iterations_line.setText("2000")
+        self.max_iterations_line.setText("100000")
 
         grid_2 = QGridLayout()
         grid_2.addWidget(
@@ -665,9 +665,11 @@ class SegmentationWidget(QMainWindow):
             lr=train_config.initial_learning_rate,
         )
 
+        # set scheduler
         def lambda_(iteration):
             return pow((1 - ((iteration) / train_config.max_iterations)), 0.9)
 
+        # resume training
         if self.train_from_scratch_checkbox.isChecked():
             # train from scratch
             model_config.checkpoint = None
@@ -681,6 +683,7 @@ class SegmentationWidget(QMainWindow):
 
         if model_config.checkpoint is None:
             start_iteration = 0
+            lowest_loss = 1e0
             self.losses = []
             self.iterations = []
             self.losses_widget.clear()
@@ -710,21 +713,36 @@ class SegmentationWidget(QMainWindow):
                 device=device,
             )
             scheduler.step()
+            clear_output(wait=True)
             yield (iteration, train_loss)
+            if iteration % train_config.save_model_every == 0:
+                lowest_loss = min(oce_loss, lowest_loss)
+                state = {
+                    "iteration": self.iterations[-1]
+                    if len(self.iterations) > 0
+                    else 0,
+                    "lowest_loss": lowest_loss,
+                    "model_state_dict": model.state_dict(),
+                    "optim_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "iterations": self.iterations,
+                    "losses": self.losses,
+                }
+
+                torch.save(
+                    state, "/tmp/models/" + str(iteration).zfill(6) + ".pth"
+                )
 
     def on_yield(self, step_data):
+        global train_config
         if self.mode == "training":
-            global time_now
+
             iteration, loss = step_data
-            current_time = time.time()
-            time_elapsed = current_time - time_now
-            time_now = current_time
-            print(
-                f"iteration {iteration}, loss {loss}, seconds/iteration {time_elapsed}"
-            )
+            print(f"===> iteration: {iteration}, loss: {loss:.6f}")
             self.iterations.append(iteration)
             self.losses.append(loss)
             self.update_canvas()
+
         elif self.mode == "predicting":
             print(step_data)
             # self.pbar.setValue(step_data)
