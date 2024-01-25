@@ -264,10 +264,10 @@ class SegmentationWidget(QMainWindow):
 
         self.save_model_button = QPushButton(self)
         self.save_model_button.setText("Save Model")
-        self.save_model_button.clicked.connect(self.save_model_weights)
+        self.save_model_button.clicked.connect(self.save_model)
         self.load_model_button = QPushButton(self)
         self.load_model_button.setText("Load Model")
-        self.load_model_button.clicked.connect(self.get_model_weights)
+        self.load_model_button.clicked.connect(self.load_model)
 
         grid_4 = QGridLayout()
         grid_4.addWidget(self.save_model_button, 0, 0, 1, 1)
@@ -449,22 +449,92 @@ class SegmentationWidget(QMainWindow):
             self.y_checkbox.setChecked(True)
             self.x_checkbox.setChecked(True)
 
-    def get_model_weights(self):
+    def load_model(self):
 
         self.update_mode(self.sender())
-        global model_config
+        global model_config, dataset, train_config, model
         if model_config is None:
             model_config = ModelConfig(
                 num_fmaps=int(self.fmaps_line.text()),
                 fmap_inc_factor=int(self.fmaps_increase_line.text()),
             )
+
+        if train_config is None:
+            train_config = TrainConfig(
+                crop_size=[
+                    int(self.crop_size_line.text())
+                ],  # this is correctly handled in the dataset class
+                batch_size=int(self.batch_size_line.text()),
+                max_iterations=int(self.max_iterations_line.text()),
+                device=self.device_combo_box.currentText(),
+            )
+
+        if dataset is None:
+            # Turn layer into dataset
+            dataset = NapariDataset(
+                layer=self.raw_selector.value,
+                axis_names=self.get_selected_axes(),
+                crop_size=train_config.crop_size[0],  # list to integer
+                control_point_spacing=train_config.control_point_spacing,
+                control_point_jitter=train_config.control_point_jitter,
+            )
+
+            if not Path("/tmp/models").exists():
+                Path("/tmp/models").mkdir()
+
+            if dataset.get_num_spatial_dims() == 2:
+                downsampling_factors = [
+                    [2, 2],
+                ]
+            elif dataset.get_num_spatial_dims() == 3:
+                downsampling_factors = [
+                    [2, 2, 2],
+                ]
+
+        # set model
+        model_orig = get_model(
+            in_channels=dataset.get_num_channels(),
+            out_channels=dataset.get_num_spatial_dims(),
+            num_fmaps=model_config.num_fmaps,
+            fmap_inc_factor=model_config.fmap_inc_factor,
+            features_in_last_layer=model_config.features_in_last_layer,
+            downsampling_factors=[
+                tuple(factor) for factor in downsampling_factors
+            ],
+            num_spatial_dims=dataset.get_num_spatial_dims(),
+        )
+
+        # put a wrapper around the model
+        model = Model(model_orig, self.get_selected_axes())
+
+        # set device
+        device = torch.device(train_config.device)
+
+        model = model.to(device)
         fname, _ = QFileDialog.getOpenFileName(
-            self, "Browse to model weights", "/tmp/models/last.pth"
+            self,
+            "Browse to model weights",
+            "/Users/lalitm/Desktop/demos/20242501/models_20240124/006000.pth",
+        )
+
+        # set optimizer
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=train_config.initial_learning_rate,
         )
 
         model_config.checkpoint = fname
+        print("+" * 10)
+        print(f"Model weights successfully loaded from {fname}")
+        print(f"Resuming model from {model_config.checkpoint}")
+        state = torch.load(model_config.checkpoint, map_location=device)
+        state["iteration"] + 1
+        self.iterations = state["iterations"]
+        self.losses = state["losses"]
+        model.load_state_dict(state["model_state_dict"], strict=True)
+        optimizer.load_state_dict(state["optim_state_dict"])
 
-    def save_model_weights(self):
+    def save_model(self):
 
         global model, optimizer, scheduler
         self.update_mode(self.sender())
@@ -598,9 +668,6 @@ class SegmentationWidget(QMainWindow):
             control_point_jitter=train_config.control_point_jitter,
         )
 
-        if not Path("/tmp/models").exists():
-            Path("/tmp/models").mkdir()
-
         # create train dataloader
         dataloader = torch.utils.data.DataLoader(
             dataset=dataset,
@@ -609,6 +676,9 @@ class SegmentationWidget(QMainWindow):
             num_workers=train_config.num_workers,
             pin_memory=True,
         )
+
+        if not Path("/tmp/models").exists():
+            Path("/tmp/models").mkdir()
 
         if dataset.get_num_spatial_dims() == 2:
             downsampling_factors = [
