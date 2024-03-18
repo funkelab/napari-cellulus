@@ -16,15 +16,36 @@ The main source repository for *cellulus* lives **[here](https://github.com/funk
 
 ### Installation
 
-To install the latest version:
+One could execute these lines of code below to create a new environment and install dependencies.
+
+1. Create a new environment called `napari-cellulus`:
+
+```bash
+conda create -y -n napari-cellulus python==3.9
+```
+
+2. Activate the newly-created environment:
 
 ```
-conda create -y -n napari-cellulus python=3.9
 conda activate napari-cellulus
+```
+
+3a. If using a GPU, install pytorch cuda dependencies:
+
+```bash
+conda install pytorch==2.0.1 torchvision==0.15.2 pytorch-cuda=11.7 -c pytorch -c nvidia
+```
+
+3b. otherwise (if using a CPU or MPS), run:
+
+```bash
 pip install torch torchvision
-git clone https://github.com/funkelab/napari-cellulus.git
-cd napari-cellulus
-pip install -e .
+```
+
+4. Install the package from github:
+
+```bash
+pip install git+https://github.com/funkelab/napari-cellulus.git
 ```
 
 ### Getting Started
