@@ -45,17 +45,17 @@ class Model(torch.nn.Module):
         self.model = model
         self.selected_axes = selected_axes
 
-    def forward(self, x):
+    def forward(self, raw):
         if "s" in self.selected_axes and "c" in self.selected_axes:
             pass
         elif "s" in self.selected_axes and "c" not in self.selected_axes:
 
-            x = torch.unsqueeze(x, 1)
+            raw = torch.unsqueeze(raw, 1)
         elif "s" not in self.selected_axes and "c" in self.selected_axes:
             pass
         elif "s" not in self.selected_axes and "c" not in self.selected_axes:
-            x = torch.unsqueeze(x, 1)
-        return self.model(x)
+            raw = torch.unsqueeze(raw, 1)
+        return self.model(raw)
 
     @staticmethod
     def select_and_add_coordinates(outputs, coordinates):
@@ -105,10 +105,6 @@ class Widget(QMainWindow):
         self.set_grid_6()
         self.grid_7 = QGridLayout()  # feedback
         self.set_grid_7()
-        self.create_configs()  # configs
-        self.viewer.dims.events.current_step.connect(
-            self.update_inference_widgets
-        )  # listen to viewer slider
 
         layout.addLayout(self.grid_0)
         layout.addLayout(self.grid_1)
@@ -183,7 +179,7 @@ class Widget(QMainWindow):
         max_iterations_label.setText("Max iterations")
         self.max_iterations_line = QLineEdit(self)
         self.max_iterations_line.setAlignment(Qt.AlignCenter)
-        self.max_iterations_line.setText("100000")
+        self.max_iterations_line.setText("5000")
         self.grid_3.addWidget(crop_size_label, 0, 0, 1, 1)
         self.grid_3.addWidget(self.crop_size_line, 0, 1, 1, 1)
         self.grid_3.addWidget(batch_size_label, 1, 0, 1, 1)
@@ -312,33 +308,37 @@ class Widget(QMainWindow):
         return names
 
     def create_configs(self):
-        self.train_config = TrainConfig(
-            crop_size=[int(self.crop_size_line.text())],
-            batch_size=int(self.batch_size_line.text()),
-            max_iterations=int(self.max_iterations_line.text()),
-            device=self.device_combo_box.currentText(),
-        )
-        self.model_config = ModelConfig(
-            num_fmaps=int(self.feature_maps_line.text()),
-            fmap_inc_factor=int(self.feature_maps_increase_line.text()),
-        )
+        if not hasattr(self, 'train_config'):
+            self.train_config = TrainConfig(
+                crop_size=[int(self.crop_size_line.text())],
+                batch_size=int(self.batch_size_line.text()),
+                max_iterations=int(self.max_iterations_line.text()),
+                device=self.device_combo_box.currentText(),
+            )
+        if not hasattr(self, 'model_config'):
+            self.model_config = ModelConfig(
+                num_fmaps=int(self.feature_maps_line.text()),
+                fmap_inc_factor=int(self.feature_maps_increase_line.text()),
+            )
+        if not hasattr(self, 'experiment_config'):
+            self.experiment_config = ExperimentConfig(
+                train_config=asdict(self.train_config),
+                model_config=asdict(self.model_config),
+            )
+        if not hasattr(self, 'losses'):
+            self.losses = []
+        if not hasattr(self, 'iterations'):
+            self.iterations = []
+        if not hasattr(self, 'start_iteration'):
+            self.start_iteration = 0
 
-        self.experiment_config = ExperimentConfig(
-            train_config=asdict(self.train_config),
-            model_config=asdict(self.model_config),
-        )
-        self.losses, self.iterations = [], []
-        self.start_iteration = 0
         self.model_dir = "/tmp/models"
         self.thresholds = []
         self.band_widths = []
         self.min_sizes = []
-        if len(self.thresholds) == 0:
-            self.threshold_line.setEnabled(False)
-        if len(self.band_widths) == 0:
-            self.bandwidth_line.setEnabled(False)
-        if len(self.min_sizes) == 0:
-            self.min_size_line.setEnabled(False)
+        self.threshold_line.setEnabled(False)
+        self.bandwidth_line.setEnabled(False)
+        self.min_size_line.setEnabled(False)
 
     def update_inference_widgets(self, event: Event):
         if self.s_check_box.isChecked():
@@ -373,10 +373,16 @@ class Widget(QMainWindow):
 
         self.train_worker = self.train()
         self.train_worker.yielded.connect(self.on_yield_training)
+        self.train_worker.returned.connect(self.prepare_for_stop_training)
         self.train_worker.start()
 
     @thread_worker
     def train(self):
+        self.create_configs()  # configs
+        self.viewer.dims.events.current_step.connect(
+            self.update_inference_widgets
+        )  # listen to viewer slider
+
         for layer in self.viewer.layers:
             if f"{layer}" == self.raw_selector.currentText():
                 raw_image_layer = layer
@@ -420,10 +426,13 @@ class Widget(QMainWindow):
 
         # Set device
         self.device = torch.device(self.train_config.device)
+
         model = Model(
             model=model_original, selected_axes=self.get_selected_axes()
         )
         self.model = model.to(self.device)
+
+
 
         # Initialize model weights
         if self.model_config.initialize:
@@ -474,6 +483,7 @@ class Widget(QMainWindow):
                 )
 
         # Call Train Iteration
+
         for iteration, batch in tqdm(
             zip(
                 range(self.start_iteration, self.train_config.max_iterations),
@@ -488,6 +498,8 @@ class Widget(QMainWindow):
                 device=self.device,
             )
             yield loss, iteration
+        return
+
 
     def on_yield_training(self, loss_iteration):
         loss, iteration = loss_iteration
@@ -528,6 +540,8 @@ class Widget(QMainWindow):
             self.model_config.checkpoint = checkpoint_file_name
 
     def prepare_for_start_inference(self):
+
+
         self.start_training_button.setEnabled(False)
         self.stop_training_button.setEnabled(False)
         self.threshold_line.setEnabled(False)
@@ -543,6 +557,7 @@ class Widget(QMainWindow):
             post_processing="cell"
             if self.radio_button_cell.isChecked()
             else "nucleus",
+            num_infer_iterations = 16
         )
 
         self.inference_worker = self.infer()
@@ -649,9 +664,10 @@ class Widget(QMainWindow):
 
         if self.napari_dataset.get_num_spatial_dims() == 2:
             crop_size_tuple = (self.inference_config.crop_size[0],) * 2
-
+            predicted_crop_size_tuple = (self.inference_config.crop_size[0]-16,) * 2
         elif self.napari_dataset.get_num_spatial_dims() == 3:
             crop_size_tuple = (self.inference_config.crop_size[0],) * 3
+            predicted_crop_size_tuple = (self.inference_config.crop_size[0]-16,) * 3
 
         input_shape = gp.Coordinate(
             (
@@ -697,13 +713,15 @@ class Widget(QMainWindow):
 
         # scan_request.add(raw, input_size)
         scan_request[raw] = gp.Roi(
-            (-8,) * (self.napari_dataset.get_num_spatial_dims()),
+            (-8,) * self.napari_dataset.get_num_spatial_dims(),
             crop_size_tuple,
         )
-        scan_request.add(prediction, output_size)
+        scan_request[prediction] = gp.Roi((0,)*self.napari_dataset.get_num_spatial_dims(),
+                                          predicted_crop_size_tuple )
+
         predict = gp.torch.Predict(
             self.model,
-            inputs={"x": raw},
+            inputs={"raw": raw},
             outputs={0: prediction},
             array_specs={prediction: gp.ArraySpec(voxel_size=voxel_size)},
         )
@@ -807,6 +825,7 @@ class Widget(QMainWindow):
                     if i < self.napari_dataset.get_num_spatial_dims()
                     else "gray",
                     "blending": "additive",
+                    "channel_axis": 1
                 },
                 "image",
             )
@@ -939,7 +958,10 @@ class Widget(QMainWindow):
             if layer_type == "image":
                 self.viewer.add_image(data, **metadata)
             elif layer_type == "labels":
-                self.viewer.add_labels(data.astype(int), **metadata)
+                if self.napari_dataset.get_num_samples() != 0 and self.napari_dataset.get_num_channels() != 0:
+                    self.viewer.add_labels(data.astype(int), **metadata)
+                else:
+                    self.viewer.add_labels(data[:, 0].astype(int), **metadata)
         self.viewer.layers["Offset (x)"].visible = False
         self.viewer.layers["Offset (y)"].visible = False
         self.viewer.layers["Uncertainty"].visible = False
