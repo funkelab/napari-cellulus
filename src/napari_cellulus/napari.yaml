@@ -1,17 +1,23 @@
 name: napari-cellulus
-display_name: cellulus
+display_name: Cellulus
 contributions:
   commands:
-    - id: napari-cellulus.tissuenet_sample
-      python_name: napari_cellulus._sample_data:tissuenet_sample
-      title: Load sample data from cellulus
-    - id: napari-cellulus.SegmentationWidget
-      python_name: napari_cellulus.widgets.widget:SegmentationWidget
-      title: cellulus
+    - id: napari-cellulus.tissue_net_sample
+      python_name: napari_cellulus.sample_data:tissue_net_sample
+      title: Load sample data from Cellulus
+    - id: napari-cellulus.fluo_n2dl_hela_sample
+      python_name: napari_cellulus.sample_data:fluo_n2dl_hela_sample
+      title: Load sample data from Cellulus
+    - id: napari-cellulus.Widget
+      python_name: napari_cellulus.widget:Widget
+      title: Cellulus
   sample_data:
-    - command: napari-cellulus.tissuenet_sample
-      display_name: cellulus
-      key: tissuenet_sample
+    - command: napari-cellulus.tissue_net_sample
+      display_name: TissueNet
+      key: tissue_net_sample
+    - command: napari-cellulus.fluo_n2dl_hela_sample
+      display_name: Fluo-N2DL-HeLa
+      key: fluo_n2dl_hela_sample
   widgets:
-    - command: napari-cellulus.SegmentationWidget
-      display_name: cellulus
+    - command: napari-cellulus.Widget
+      display_name: Cellulus
