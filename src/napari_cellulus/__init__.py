@@ -1,5 +1,5 @@
-__version__ = "0.0.3"
+__version__ = "0.1.0"
 
-from ._sample_data import tissuenet_sample
+from .sample_data import tissue_net_sample
 
-__all__ = ("tissuenet_sample",)
+__all__ = ("tissue_net_sample",)
