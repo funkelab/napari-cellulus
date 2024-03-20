@@ -5,9 +5,6 @@ contributions:
     - id: napari-cellulus.tissue_net_sample
       python_name: napari_cellulus.sample_data:tissue_net_sample
       title: Load sample data from Cellulus
-    - id: napari-cellulus.fluo_n2dl_hela_sample
-      python_name: napari_cellulus.sample_data:fluo_n2dl_hela_sample
-      title: Load sample data from Cellulus
     - id: napari-cellulus.Widget
       python_name: napari_cellulus.widget:Widget
       title: Cellulus
@@ -15,9 +12,6 @@ contributions:
     - command: napari-cellulus.tissue_net_sample
       display_name: TissueNet
       key: tissue_net_sample
-    - command: napari-cellulus.fluo_n2dl_hela_sample
-      display_name: Fluo-N2DL-HeLa
-      key: fluo_n2dl_hela_sample
   widgets:
     - command: napari-cellulus.Widget
       display_name: Cellulus
