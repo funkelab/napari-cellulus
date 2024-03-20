@@ -236,12 +236,14 @@ class Widget(QMainWindow):
     def set_grid_6(self):
         threshold_label = QLabel("Threshold")
         self.threshold_line = QLineEdit(self)
+        self.threshold_line.textChanged.connect(self.prepare_thresholds)
         self.threshold_line.setAlignment(Qt.AlignCenter)
         self.threshold_line.setText(None)
 
         bandwidth_label = QLabel("Bandwidth")
         self.bandwidth_line = QLineEdit(self)
         self.bandwidth_line.setAlignment(Qt.AlignCenter)
+        self.bandwidth_line.textChanged.connect(self.prepare_bandwidths)
 
         self.radio_button_group = QButtonGroup(self)
         self.radio_button_cell = QRadioButton("Cell")
@@ -253,6 +255,8 @@ class Widget(QMainWindow):
         self.min_size_label = QLabel("Minimum Size")
         self.min_size_line = QLineEdit(self)
         self.min_size_line.setAlignment(Qt.AlignCenter)
+        self.min_size_line.textChanged.connect(self.prepare_min_sizes)
+
         self.start_inference_button = QPushButton("Start inference")
         self.start_inference_button.setFixedSize(140, 30)
         self.stop_inference_button = QPushButton("Stop inference")
@@ -260,6 +264,7 @@ class Widget(QMainWindow):
 
         self.grid_6.addWidget(threshold_label, 0, 0, 1, 1)
         self.grid_6.addWidget(self.threshold_line, 0, 1, 1, 1)
+
         self.grid_6.addWidget(bandwidth_label, 1, 0, 1, 1)
         self.grid_6.addWidget(self.bandwidth_line, 1, 1, 1, 1)
         self.grid_6.addWidget(self.radio_button_cell, 2, 0, 1, 1)
@@ -309,34 +314,31 @@ class Widget(QMainWindow):
         return names
 
     def create_configs(self):
-        if not hasattr(self, 'train_config'):
+        if not hasattr(self, "train_config"):
             self.train_config = TrainConfig(
                 crop_size=[int(self.crop_size_line.text())],
                 batch_size=int(self.batch_size_line.text()),
                 max_iterations=int(self.max_iterations_line.text()),
                 device=self.device_combo_box.currentText(),
             )
-        if not hasattr(self, 'model_config'):
+        if not hasattr(self, "model_config"):
             self.model_config = ModelConfig(
                 num_fmaps=int(self.feature_maps_line.text()),
                 fmap_inc_factor=int(self.feature_maps_increase_line.text()),
             )
-        if not hasattr(self, 'experiment_config'):
+        if not hasattr(self, "experiment_config"):
             self.experiment_config = ExperimentConfig(
                 train_config=asdict(self.train_config),
                 model_config=asdict(self.model_config),
             )
-        if not hasattr(self, 'losses'):
+        if not hasattr(self, "losses"):
             self.losses = []
-        if not hasattr(self, 'iterations'):
+        if not hasattr(self, "iterations"):
             self.iterations = []
-        if not hasattr(self, 'start_iteration'):
+        if not hasattr(self, "start_iteration"):
             self.start_iteration = 0
 
         self.model_dir = "/tmp/models"
-        self.thresholds = []
-        self.band_widths = []
-        self.min_sizes = []
         self.threshold_line.setEnabled(False)
         self.bandwidth_line.setEnabled(False)
         self.min_size_line.setEnabled(False)
@@ -345,21 +347,27 @@ class Widget(QMainWindow):
         if self.s_check_box.isChecked():
             shape = event.value
             sample_index = shape[0]
-            if len(self.thresholds) == self.napari_dataset.get_num_samples():
-                if self.thresholds[sample_index]!=None:
-                    self.threshold_line.setText(
-                        str(round(self.thresholds[sample_index], 3))
-                    )
-            if len(self.band_widths) == self.napari_dataset.get_num_samples():
-                if self.band_widths[sample_index]!=None:
-                    self.bandwidth_line.setText(
-                        str(round(self.band_widths[sample_index], 3))
-                    )
-            if len(self.min_sizes) == self.napari_dataset.get_num_samples():
-                if self.min_sizes[sample_index]!=None:
-                    self.min_size_line.setText(
-                        str(round(self.min_sizes[sample_index], 3))
-                    )
+            if (
+                hasattr(self, "thresholds")
+                and self.thresholds[sample_index] is not None
+            ):
+                self.threshold_line.setText(
+                    str(round(self.thresholds[sample_index], 3))
+                )
+            if (
+                hasattr(self, "band_widths")
+                and self.band_widths[sample_index] is not None
+            ):
+                self.bandwidth_line.setText(
+                    str(round(self.band_widths[sample_index], 3))
+                )
+            if (
+                hasattr(self, "min_sizes")
+                and self.min_sizes[sample_index] is not None
+            ):
+                self.min_size_line.setText(
+                    str(round(self.min_sizes[sample_index], 3))
+                )
 
     def prepare_for_start_training(self):
         self.start_training_button.setEnabled(False)
@@ -433,8 +441,6 @@ class Widget(QMainWindow):
         )
         self.model = model.to(self.device)
 
-
-
         # Initialize model weights
         if self.model_config.initialize:
             for _name, layer in self.model.named_modules():
@@ -501,7 +507,6 @@ class Widget(QMainWindow):
             yield loss, iteration
         return
 
-
     def on_yield_training(self, loss_iteration):
         loss, iteration = loss_iteration
         print(f"===> Iteration: {iteration}, loss: {loss:.6f}")
@@ -512,17 +517,17 @@ class Widget(QMainWindow):
     def prepare_for_stop_training(self):
         self.start_training_button.setEnabled(True)
         self.stop_training_button.setEnabled(True)
-        if len(self.thresholds) == 0:
+        if not hasattr(self, "thresholds"):
             self.threshold_line.setEnabled(False)
         else:
             self.threshold_line.setEnabled(True)
-        if len(self.band_widths) == 0:
+        if not hasattr(self, "band_widths"):
             self.bandwidth_line.setEnabled(False)
         else:
             self.bandwidth_line.setEnabled(True)
         self.radio_button_nucleus.setEnabled(True)
         self.radio_button_cell.setEnabled(True)
-        if len(self.min_sizes) == 0:
+        if not hasattr(self, "min_sizes"):
             self.min_size_line.setEnabled(False)
         else:
             self.min_size_line.setEnabled(True)
@@ -542,7 +547,6 @@ class Widget(QMainWindow):
 
     def prepare_for_start_inference(self):
 
-
         self.start_training_button.setEnabled(False)
         self.stop_training_button.setEnabled(False)
         self.threshold_line.setEnabled(False)
@@ -558,11 +562,9 @@ class Widget(QMainWindow):
             post_processing="cell"
             if self.radio_button_cell.isChecked()
             else "nucleus",
-            num_infer_iterations = 16
         )
 
         self.inference_worker = self.infer()
-        # self.inference_worker.yielded.connect(self.on_yield_infer)
         self.inference_worker.returned.connect(self.on_return_infer)
         self.inference_worker.start()
 
@@ -580,6 +582,8 @@ class Widget(QMainWindow):
             self.threshold_line.setText(str(round(self.thresholds[0], 3)))
             self.bandwidth_line.setText(str(round(self.band_widths[0], 3)))
             self.min_size_line.setText(str(round(self.min_sizes[0], 3)))
+        if self.inference_worker is not None:
+            self.inference_worker.quit()
 
     @thread_worker
     def infer(self):
@@ -588,14 +592,14 @@ class Widget(QMainWindow):
                 raw_image_layer = layer
                 break
 
-        self.thresholds = (
-            [None] * self.napari_dataset.get_num_samples()
-            if self.napari_dataset.get_num_samples() != 0
-            else [None] * 1
-        )
-        if (
+        if not hasattr(self, "thresholds"):
+            self.thresholds = (
+                [None] * self.napari_dataset.get_num_samples()
+                if self.napari_dataset.get_num_samples() != 0
+                else [None] * 1
+            )
+        if not hasattr(self, "band_widths") and (
             self.inference_config.bandwidth is None
-            and len(self.band_widths) == 0
         ):
             self.band_widths = (
                 [0.5 * self.experiment_config.object_size]
@@ -604,7 +608,10 @@ class Widget(QMainWindow):
                 else [0.5 * self.experiment_config.object_size]
             )
 
-        if self.inference_config.min_size is None and len(self.min_sizes) == 0:
+        if (
+            not hasattr(self, "min_sizes")
+            and self.inference_config.min_size is None
+        ):
             if self.napari_dataset.get_num_spatial_dims() == 2:
                 self.min_sizes = (
                     [
@@ -656,6 +663,8 @@ class Widget(QMainWindow):
                 )
 
         # set in eval mode
+        self.model = self.model.to(self.device)
+
         self.model.eval()
         self.model.set_infer(
             p_salt_pepper=self.inference_config.p_salt_pepper,
@@ -665,10 +674,14 @@ class Widget(QMainWindow):
 
         if self.napari_dataset.get_num_spatial_dims() == 2:
             crop_size_tuple = (self.inference_config.crop_size[0],) * 2
-            predicted_crop_size_tuple = (self.inference_config.crop_size[0]-16,) * 2
+            predicted_crop_size_tuple = (
+                self.inference_config.crop_size[0] - 16,
+            ) * 2
         elif self.napari_dataset.get_num_spatial_dims() == 3:
             crop_size_tuple = (self.inference_config.crop_size[0],) * 3
-            predicted_crop_size_tuple = (self.inference_config.crop_size[0]-16,) * 3
+            predicted_crop_size_tuple = (
+                self.inference_config.crop_size[0] - 16,
+            ) * 3
 
         input_shape = gp.Coordinate(
             (
@@ -692,7 +705,12 @@ class Widget(QMainWindow):
             output_shape = gp.Coordinate(
                 self.model(
                     torch.zeros(
-                        (1, 1, *crop_size_tuple), dtype=torch.float32
+                        (
+                            1,
+                            self.napari_dataset.get_num_channels(),
+                            *crop_size_tuple,
+                        ),
+                        dtype=torch.float32,
                     ).to(self.device)
                 ).shape
             )
@@ -717,8 +735,10 @@ class Widget(QMainWindow):
             (-8,) * self.napari_dataset.get_num_spatial_dims(),
             crop_size_tuple,
         )
-        scan_request[prediction] = gp.Roi((0,)*self.napari_dataset.get_num_spatial_dims(),
-                                          predicted_crop_size_tuple )
+        scan_request[prediction] = gp.Roi(
+            (0,) * self.napari_dataset.get_num_spatial_dims(),
+            predicted_crop_size_tuple,
+        )
 
         predict = gp.torch.Predict(
             self.model,
@@ -767,25 +787,29 @@ class Widget(QMainWindow):
         # Obtain Embeddings
         print("Predicting Embeddings ...")
 
-        with gp.build(pipeline):
-            batch = pipeline.request_batch(request)
-
-        embeddings = batch.arrays[prediction].data
-        embeddings_centered = np.zeros_like(embeddings)
-        foreground_mask = np.zeros_like(embeddings[:, 0:1, ...], dtype=bool)
+        if hasattr(self, "embeddings"):
+            pass
+        else:
+            with gp.build(pipeline):
+                batch = pipeline.request_batch(request)
+            self.embeddings = batch.arrays[prediction].data
+        embeddings_centered = np.zeros_like(self.embeddings)
+        foreground_mask = np.zeros_like(
+            self.embeddings[:, 0:1, ...], dtype=bool
+        )
         colormaps = ["red", "green", "blue"]
 
         # Obtain Object Centered Embeddings
-        for sample in tqdm(range(embeddings.shape[0])):
-            embeddings_sample = embeddings[sample]
+        for sample in tqdm(range(self.embeddings.shape[0])):
+            embeddings_sample = self.embeddings[sample]
             embeddings_std = embeddings_sample[-1, ...]
             embeddings_mean = embeddings_sample[
                 np.newaxis, : self.napari_dataset.get_num_spatial_dims(), ...
             ].copy()
-            threshold = threshold_otsu(embeddings_std)
-
-            self.thresholds[sample] = threshold
-            binary_mask = embeddings_std < threshold
+            if self.thresholds[sample] is None:
+                threshold = threshold_otsu(embeddings_std)
+                self.thresholds[sample] = threshold
+            binary_mask = embeddings_std < self.thresholds[sample]
             foreground_mask[sample] = binary_mask[np.newaxis, ...]
             embeddings_centered_sample = embeddings_sample.copy()
             embeddings_mean_masked = (
@@ -826,16 +850,17 @@ class Widget(QMainWindow):
                     if i < self.napari_dataset.get_num_spatial_dims()
                     else "gray",
                     "blending": "additive",
-                    "channel_axis": 1
                 },
                 "image",
             )
             for i in range(self.napari_dataset.get_num_spatial_dims() + 1)
         ]
         print("Clustering Objects in the obtained Foreground Mask ...")
-        detection = np.zeros_like(embeddings[:, 0:1, ...], dtype=np.uint16)
-        for sample in tqdm(range(embeddings.shape[0])):
-            embeddings_sample = embeddings[sample]
+        detection = np.zeros_like(
+            self.embeddings[:, 0:1, ...], dtype=np.uint16
+        )
+        for sample in tqdm(range(self.embeddings.shape[0])):
+            embeddings_sample = self.embeddings[sample]
             embeddings_std = embeddings_sample[-1, ...]
             embeddings_mean = embeddings_sample[
                 np.newaxis, : self.napari_dataset.get_num_spatial_dims(), ...
@@ -853,9 +878,11 @@ class Widget(QMainWindow):
             detection[sample, 0, ...] = detection_sample
 
         print("Converting Detections to Segmentations ...")
-        segmentation = np.zeros_like(embeddings[:, 0:1, ...], dtype=np.uint16)
+        segmentation = np.zeros_like(
+            self.embeddings[:, 0:1, ...], dtype=np.uint16
+        )
         if self.radio_button_cell.isChecked():
-            for sample in tqdm(range(embeddings.shape[0])):
+            for sample in tqdm(range(self.embeddings.shape[0])):
                 segmentation_sample = detection[sample, 0].copy()
                 distance_foreground = dtedt(segmentation_sample == 0)
                 expanded_mask = (
@@ -868,7 +895,7 @@ class Widget(QMainWindow):
                 segmentation[sample, 0, ...] = segmentation_sample
         elif self.radio_button_nucleus.isChecked():
             raw_image = raw_image_layer.data
-            for sample in tqdm(range(embeddings.shape[0])):
+            for sample in tqdm(range(self.embeddings.shape[0])):
                 segmentation_sample = detection[sample, 0]
                 if (
                     self.napari_dataset.get_num_samples() == 0
@@ -943,7 +970,7 @@ class Widget(QMainWindow):
         print("Removing small objects ...")
 
         # size filter - remove small objects
-        for sample in tqdm(range(embeddings.shape[0])):
+        for sample in tqdm(range(self.embeddings.shape[0])):
             segmentation[sample, 0, ...] = size_filter(
                 segmentation[sample, 0], self.min_sizes[sample]
             )
@@ -955,11 +982,30 @@ class Widget(QMainWindow):
         )
 
     def on_return_infer(self, layers):
+
+        if "Offset (x)" in self.viewer.layers:
+            del self.viewer.layers["Offset (x)"]
+        if "Offset (y)" in self.viewer.layers:
+            del self.viewer.layers["Offset (y)"]
+        if "Offset (z)" in self.viewer.layers:
+            del self.viewer.layers["Offset (z)"]
+        if "Uncertainty" in self.viewer.layers:
+            del self.viewer.layers["Uncertainty"]
+        if "Foreground Mask" in self.viewer.layers:
+            del self.viewer.layers["Foreground Mask"]
+        if "Segmentation" in self.viewer.layers:
+            del self.viewer.layers["Segmentation"]
+        if "Detection" in self.viewer.layers:
+            del self.viewer.layers["Detection"]
+
         for data, metadata, layer_type in layers:
             if layer_type == "image":
                 self.viewer.add_image(data, **metadata)
             elif layer_type == "labels":
-                if self.napari_dataset.get_num_samples() != 0 and self.napari_dataset.get_num_channels() != 0:
+                if (
+                    self.napari_dataset.get_num_samples() != 0
+                    and self.napari_dataset.get_num_channels() != 0
+                ):
                     self.viewer.add_labels(data.astype(int), **metadata)
                 else:
                     self.viewer.add_labels(data[:, 0].astype(int), **metadata)
@@ -971,3 +1017,15 @@ class Widget(QMainWindow):
         self.viewer.layers["Segmentation"].visible = True
         self.inference_worker.quit()
         self.prepare_for_stop_inference()
+
+    def prepare_thresholds(self):
+        sample_index = self.viewer.dims.current_step[0]
+        self.thresholds[sample_index] = float(self.threshold_line.text())
+
+    def prepare_bandwidths(self):
+        sample_index = self.viewer.dims.current_step[0]
+        self.band_widths[sample_index] = float(self.bandwidth_line.text())
+
+    def prepare_min_sizes(self):
+        sample_index = self.viewer.dims.current_step[0]
+        self.min_sizes[sample_index] = float(self.min_size_line.text())
