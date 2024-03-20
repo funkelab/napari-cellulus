@@ -71,6 +71,7 @@ class NapariDataset(IterableDataset):
                 )
                 + gp.Unsqueeze([self.raw], 0)
                 + gp.RandomLocation()
+                + gp.Normalize(self.raw, factor=self.normalization_factor)
             )
         else:
             self.pipeline = (
@@ -81,6 +82,7 @@ class NapariDataset(IterableDataset):
                     spatial_dims=self.spatial_dims,
                 )
                 + gp.RandomLocation()
+                + gp.Normalize(self.raw, factor=self.normalization_factor)
             )
 
     def __iter__(self):
