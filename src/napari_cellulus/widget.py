@@ -199,17 +199,18 @@ class Widget(QMainWindow):
         self.feature_maps_increase_line.setAlignment(Qt.AlignCenter)
         self.feature_maps_increase_line.setText("3")
         self.train_model_from_scratch_checkbox = QCheckBox(
-            "Train model from scratch"
+            "Train from scratch"
         )
-
+        self.load_model_button = QPushButton("Load weights")
         self.train_model_from_scratch_checkbox.setChecked(False)
         self.grid_4.addWidget(feature_maps_label, 0, 0, 1, 1)
         self.grid_4.addWidget(self.feature_maps_line, 0, 1, 1, 1)
         self.grid_4.addWidget(feature_maps_increase_label, 1, 0, 1, 1)
         self.grid_4.addWidget(self.feature_maps_increase_line, 1, 1, 1, 1)
         self.grid_4.addWidget(
-            self.train_model_from_scratch_checkbox, 2, 0, 1, 2
+            self.train_model_from_scratch_checkbox, 2, 0, 1, 1
         )
+        self.grid_4.addWidget(self.load_model_button, 2, 1, 1, 1)
 
     def set_grid_5(self):
         self.losses_widget = pg.PlotWidget()
