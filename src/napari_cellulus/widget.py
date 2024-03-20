@@ -21,6 +21,7 @@ from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QGridLayout,
     QLabel,
     QLineEdit,
@@ -165,6 +166,11 @@ class Widget(QMainWindow):
         self.grid_2.addWidget(self.x_check_box, 1, 4, 1, 1)
 
     def set_grid_3(self):
+        normalization_factor_label = QLabel(self)
+        normalization_factor_label.setText("Normalization Factor")
+        self.normalization_factor_line = QLineEdit(self)
+        self.normalization_factor_line.setAlignment(Qt.AlignCenter)
+        self.normalization_factor_line.setText("1.0")
         crop_size_label = QLabel(self)
         crop_size_label.setText("Crop Size")
         self.crop_size_line = QLineEdit(self)
@@ -180,12 +186,14 @@ class Widget(QMainWindow):
         self.max_iterations_line = QLineEdit(self)
         self.max_iterations_line.setAlignment(Qt.AlignCenter)
         self.max_iterations_line.setText("5000")
-        self.grid_3.addWidget(crop_size_label, 0, 0, 1, 1)
-        self.grid_3.addWidget(self.crop_size_line, 0, 1, 1, 1)
-        self.grid_3.addWidget(batch_size_label, 1, 0, 1, 1)
-        self.grid_3.addWidget(self.batch_size_line, 1, 1, 1, 1)
-        self.grid_3.addWidget(max_iterations_label, 2, 0, 1, 1)
-        self.grid_3.addWidget(self.max_iterations_line, 2, 1, 1, 1)
+        self.grid_3.addWidget(normalization_factor_label, 0, 0, 1, 1)
+        self.grid_3.addWidget(self.normalization_factor_line, 0, 1, 1, 1)
+        self.grid_3.addWidget(crop_size_label, 1, 0, 1, 1)
+        self.grid_3.addWidget(self.crop_size_line, 1, 1, 1, 1)
+        self.grid_3.addWidget(batch_size_label, 2, 0, 1, 1)
+        self.grid_3.addWidget(self.batch_size_line, 2, 1, 1, 1)
+        self.grid_3.addWidget(max_iterations_label, 3, 0, 1, 1)
+        self.grid_3.addWidget(self.max_iterations_line, 3, 1, 1, 1)
 
     def set_grid_4(self):
         feature_maps_label = QLabel(self)
@@ -201,7 +209,11 @@ class Widget(QMainWindow):
         self.train_model_from_scratch_checkbox = QCheckBox(
             "Train from scratch"
         )
+        self.train_model_from_scratch_checkbox.stateChanged.connect(
+            self.effect_load_weights
+        )
         self.load_model_button = QPushButton("Load weights")
+        self.load_model_button.clicked.connect(self.load_weights)
         self.train_model_from_scratch_checkbox.setChecked(False)
         self.grid_4.addWidget(feature_maps_label, 0, 0, 1, 1)
         self.grid_4.addWidget(self.feature_maps_line, 0, 1, 1, 1)
@@ -219,19 +231,24 @@ class Widget(QMainWindow):
         self.losses_widget.setLabel("left", "Loss", **styles)
         self.losses_widget.setLabel("bottom", "Iterations", **styles)
         self.start_training_button = QPushButton("Start training")
-        self.start_training_button.setFixedSize(140, 30)
+        self.start_training_button.setFixedSize(88, 30)
         self.stop_training_button = QPushButton("Stop training")
-        self.stop_training_button.setFixedSize(140, 30)
+        self.stop_training_button.setFixedSize(88, 30)
+        self.save_weights_button = QPushButton("Save weights")
+        self.save_weights_button.setFixedSize(88, 30)
 
         self.grid_5.addWidget(self.losses_widget, 0, 0, 4, 4)
-        self.grid_5.addWidget(self.start_training_button, 5, 0, 1, 2)
-        self.grid_5.addWidget(self.stop_training_button, 5, 2, 1, 2)
+        self.grid_5.addWidget(self.start_training_button, 5, 0, 1, 1)
+        self.grid_5.addWidget(self.stop_training_button, 5, 1, 1, 1)
+        self.grid_5.addWidget(self.save_weights_button, 5, 2, 1, 1)
+
         self.start_training_button.clicked.connect(
             self.prepare_for_start_training
         )
         self.stop_training_button.clicked.connect(
             self.prepare_for_stop_training
         )
+        self.save_weights_button.clicked.connect(self.save_weights)
 
     def set_grid_6(self):
         threshold_label = QLabel("Threshold")
@@ -251,7 +268,7 @@ class Widget(QMainWindow):
         self.radio_button_group.addButton(self.radio_button_nucleus)
         self.radio_button_group.addButton(self.radio_button_cell)
 
-        self.radio_button_nucleus.setChecked(True)
+        self.radio_button_cell.setChecked(True)
         self.min_size_label = QLabel("Minimum Size")
         self.min_size_line = QLineEdit(self)
         self.min_size_line.setAlignment(Qt.AlignCenter)
@@ -330,6 +347,9 @@ class Widget(QMainWindow):
             self.experiment_config = ExperimentConfig(
                 train_config=asdict(self.train_config),
                 model_config=asdict(self.model_config),
+                normalization_factor=float(
+                    self.normalization_factor_line.text()
+                ),
             )
         if not hasattr(self, "losses"):
             self.losses = []
@@ -372,6 +392,7 @@ class Widget(QMainWindow):
     def prepare_for_start_training(self):
         self.start_training_button.setEnabled(False)
         self.stop_training_button.setEnabled(True)
+        self.save_weights_button.setEnabled(False)
         self.threshold_line.setEnabled(False)
         self.bandwidth_line.setEnabled(False)
         self.radio_button_nucleus.setEnabled(False)
@@ -464,6 +485,8 @@ class Widget(QMainWindow):
             lr=self.train_config.initial_learning_rate,
             weight_decay=0.01,
         )
+        if hasattr(self, "pre_trained_model_checkpoint"):
+            self.model_config.checkpoint = self.pre_trained_model_checkpoint
 
         # Resume training
         if self.train_model_from_scratch_checkbox.isChecked():
@@ -517,6 +540,7 @@ class Widget(QMainWindow):
     def prepare_for_stop_training(self):
         self.start_training_button.setEnabled(True)
         self.stop_training_button.setEnabled(True)
+        self.save_weights_button.setEnabled(True)
         if not hasattr(self, "thresholds"):
             self.threshold_line.setEnabled(False)
         else:
@@ -549,6 +573,7 @@ class Widget(QMainWindow):
 
         self.start_training_button.setEnabled(False)
         self.stop_training_button.setEnabled(False)
+        self.save_weights_button.setEnabled(False)
         self.threshold_line.setEnabled(False)
         self.bandwidth_line.setEnabled(False)
         self.radio_button_nucleus.setEnabled(False)
@@ -571,6 +596,8 @@ class Widget(QMainWindow):
     def prepare_for_stop_inference(self):
         self.start_training_button.setEnabled(True)
         self.stop_training_button.setEnabled(True)
+        self.save_weights_button.setEnabled(True)
+
         self.threshold_line.setEnabled(True)
         self.bandwidth_line.setEnabled(True)
         self.radio_button_nucleus.setEnabled(True)
@@ -602,10 +629,10 @@ class Widget(QMainWindow):
             self.inference_config.bandwidth is None
         ):
             self.band_widths = (
-                [0.5 * self.experiment_config.object_size]
+                [0.25 * self.experiment_config.object_size]
                 * self.napari_dataset.get_num_samples()
                 if self.napari_dataset.get_num_samples() != 0
-                else [0.5 * self.experiment_config.object_size]
+                else [0.25 * self.experiment_config.object_size]
             )
 
         if (
@@ -1029,3 +1056,37 @@ class Widget(QMainWindow):
     def prepare_min_sizes(self):
         sample_index = self.viewer.dims.current_step[0]
         self.min_sizes[sample_index] = float(self.min_size_line.text())
+
+    def load_weights(self):
+        file_name, _ = QFileDialog.getOpenFileName(
+            caption="Load Model Weights"
+        )
+        self.pre_trained_model_checkpoint = file_name
+        print(
+            f"Model weights will be loaded from {self.pre_trained_model_checkpoint}"
+        )
+
+    def effect_load_weights(self):
+        if self.train_model_from_scratch_checkbox.isChecked():
+            self.load_model_button.setEnabled(False)
+        else:
+            self.load_model_button.setEnabled(True)
+
+    def save_weights(self):
+        checkpoint_file_name, _ = QFileDialog.getSaveFileName(
+            caption="Save Model Weights"
+        )
+        if (
+            hasattr(self, "model")
+            and hasattr(self, "optimizer")
+            and hasattr(self, "iterations")
+            and hasattr(self, "losses")
+        ):
+            state = {
+                "model_state_dict": self.model.state_dict(),
+                "optim_state_dict": self.optimizer.state_dict(),
+                "iterations": self.iterations,
+                "losses": self.losses,
+            }
+            torch.save(state, checkpoint_file_name)
+            print(f"Model weights will be saved at {checkpoint_file_name}")
