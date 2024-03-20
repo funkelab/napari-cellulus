@@ -1,6 +1,5 @@
 import gunpowder as gp
 import numpy as np
-from csbdeep.utils import normalize
 from gunpowder.array_spec import ArraySpec
 from napari.layers import Image
 
@@ -19,10 +18,9 @@ class NapariImageSource(gp.BatchProvider):
         self, image: Image, key: gp.ArrayKey, spec: ArraySpec, spatial_dims
     ):
         self.array_spec = spec
+
         self.image = gp.Array(
-            data=normalize(
-                image.data.astype(np.float32), 1, 99.8, axis=spatial_dims
-            ),
+            data=image.data.astype(np.float32),
             spec=spec,
         )
         self.key = key
