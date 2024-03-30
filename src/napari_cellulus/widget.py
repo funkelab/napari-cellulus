@@ -406,9 +406,30 @@ class Widget(QMainWindow):
         self.train_worker.returned.connect(self.prepare_for_stop_training)
         self.train_worker.start()
 
+    def remove_inference_attributes(self):
+        if hasattr(self, "embeddings"):
+            delattr(self, "embeddings")
+        if hasattr(self, "detection"):
+            delattr(self, "detection")
+        if hasattr(self, "segmentation"):
+            delattr(self, "segmentation")
+        if hasattr(self, "thresholds"):
+            delattr(self, "thresholds")
+        if hasattr(self, "thresholds_last"):
+            delattr(self, "thresholds_last")
+        if hasattr(self, "band_widths"):
+            delattr(self, "band_widths")
+        if hasattr(self, "band_widths_last"):
+            delattr(self, "band_widths_last")
+        if hasattr(self, "min_sizes"):
+            delattr(self, "min_sizes")
+        if hasattr(self, "min_sizes_last"):
+            delattr(self, "min_sizes_last")
+
     @thread_worker
     def train(self):
         self.create_configs()  # configs
+        self.remove_inference_attributes()
         self.viewer.dims.events.current_step.connect(
             self.update_inference_widgets
         )  # listen to viewer slider
@@ -625,6 +646,10 @@ class Widget(QMainWindow):
                 if self.napari_dataset.get_num_samples() != 0
                 else [None] * 1
             )
+
+        if not hasattr(self, "thresholds_last"):
+            self.thresholds_last = self.thresholds.copy()
+
         if not hasattr(self, "band_widths") and (
             self.inference_config.bandwidth is None
         ):
@@ -634,6 +659,9 @@ class Widget(QMainWindow):
                 if self.napari_dataset.get_num_samples() != 0
                 else [0.25 * self.experiment_config.object_size]
             )
+
+        if not hasattr(self, "band_widths_last"):
+            self.band_widths_last = self.band_widths.copy()
 
         if (
             not hasattr(self, "min_sizes")
@@ -688,6 +716,9 @@ class Widget(QMainWindow):
                         )
                     ]
                 )
+
+        if not hasattr(self, "min_sizes_last"):
+            self.min_sizes_last = self.min_sizes.copy()
 
         # set in eval mode
         self.model = self.model.to(self.device)
@@ -819,6 +850,7 @@ class Widget(QMainWindow):
         else:
             with gp.build(pipeline):
                 batch = pipeline.request_batch(request)
+
             self.embeddings = batch.arrays[prediction].data
         embeddings_centered = np.zeros_like(self.embeddings)
         foreground_mask = np.zeros_like(
@@ -835,7 +867,7 @@ class Widget(QMainWindow):
             ].copy()
             if self.thresholds[sample] is None:
                 threshold = threshold_otsu(embeddings_std)
-                self.thresholds[sample] = threshold
+                self.thresholds[sample] = round(threshold, 3)
             binary_mask = embeddings_std < self.thresholds[sample]
             foreground_mask[sample] = binary_mask[np.newaxis, ...]
             embeddings_centered_sample = embeddings_sample.copy()
@@ -882,10 +914,14 @@ class Widget(QMainWindow):
             )
             for i in range(self.napari_dataset.get_num_spatial_dims() + 1)
         ]
+
         print("Clustering Objects in the obtained Foreground Mask ...")
-        detection = np.zeros_like(
-            self.embeddings[:, 0:1, ...], dtype=np.uint16
-        )
+        if hasattr(self, "detection"):
+            pass
+        else:
+            self.detection = np.zeros_like(
+                self.embeddings[:, 0:1, ...], dtype=np.uint16
+            )
         for sample in tqdm(range(self.embeddings.shape[0])):
             embeddings_sample = self.embeddings[sample]
             embeddings_std = embeddings_sample[-1, ...]
@@ -893,24 +929,33 @@ class Widget(QMainWindow):
                 np.newaxis, : self.napari_dataset.get_num_spatial_dims(), ...
             ].copy()
 
-            detection_sample = mean_shift_segmentation(
-                embeddings_mean,
-                embeddings_std,
-                bandwidth=self.band_widths[sample],
-                min_size=self.inference_config.min_size,
-                reduction_probability=self.inference_config.reduction_probability,
-                threshold=self.thresholds[sample],
-                seeds=None,
-            )
-            detection[sample, 0, ...] = detection_sample
+            if (
+                self.thresholds[sample] != self.thresholds_last[sample]
+                or self.band_widths[sample] != self.band_widths_last[sample]
+            ):
+                detection_sample = mean_shift_segmentation(
+                    embeddings_mean,
+                    embeddings_std,
+                    bandwidth=self.band_widths[sample],
+                    min_size=self.inference_config.min_size,
+                    reduction_probability=self.inference_config.reduction_probability,
+                    threshold=self.thresholds[sample],
+                    seeds=None,
+                )
+                self.detection[sample, 0, ...] = detection_sample
+            self.thresholds_last[sample] = self.thresholds[sample]
+            self.band_widths_last[sample] = self.band_widths[sample]
 
         print("Converting Detections to Segmentations ...")
-        segmentation = np.zeros_like(
-            self.embeddings[:, 0:1, ...], dtype=np.uint16
-        )
+        if hasattr(self, "segmentation"):
+            pass
+        else:
+            self.segmentation = np.zeros_like(
+                self.embeddings[:, 0:1, ...], dtype=np.uint16
+            )
         if self.radio_button_cell.isChecked():
             for sample in tqdm(range(self.embeddings.shape[0])):
-                segmentation_sample = detection[sample, 0].copy()
+                segmentation_sample = self.detection[sample, 0].copy()
                 distance_foreground = dtedt(segmentation_sample == 0)
                 expanded_mask = (
                     distance_foreground < self.inference_config.grow_distance
@@ -919,11 +964,11 @@ class Widget(QMainWindow):
                 segmentation_sample[
                     distance_background < self.inference_config.shrink_distance
                 ] = 0
-                segmentation[sample, 0, ...] = segmentation_sample
+                self.segmentation[sample, 0, ...] = segmentation_sample
         elif self.radio_button_nucleus.isChecked():
             raw_image = raw_image_layer.data
             for sample in tqdm(range(self.embeddings.shape[0])):
-                segmentation_sample = detection[sample, 0]
+                segmentation_sample = self.detection[sample, 0]
                 if (
                     self.napari_dataset.get_num_samples() == 0
                     and self.napari_dataset.get_num_channels() == 0
@@ -977,7 +1022,7 @@ class Widget(QMainWindow):
                         )
                         mask[y_min : y_max + 1, x_min : x_max + 1] = mask_small
                         y, x = np.where(mask)
-                        segmentation[sample, 0, y, x] = id_
+                        self.segmentation[sample, 0, y, x] = id_
                     elif self.napari_dataset.get_num_spatial_dims() == 3:
                         mask_small = binary_fill_holes(
                             mask[
@@ -992,20 +1037,22 @@ class Widget(QMainWindow):
                             x_min : x_max + 1,
                         ] = mask_small
                         z, y, x = np.where(mask)
-                        segmentation[sample, 0, z, y, x] = id_
+                        self.segmentation[sample, 0, z, y, x] = id_
 
         print("Removing small objects ...")
 
         # size filter - remove small objects
         for sample in tqdm(range(self.embeddings.shape[0])):
-            segmentation[sample, 0, ...] = size_filter(
-                segmentation[sample, 0], self.min_sizes[sample]
-            )
+            if self.min_sizes[sample] != self.min_sizes_last[sample]:
+                self.segmentation[sample, 0, ...] = size_filter(
+                    self.segmentation[sample, 0], self.min_sizes[sample]
+                )
+            self.min_sizes_last[sample] = self.min_sizes[sample]
         return (
             embeddings_layers
             + [(foreground_mask, {"name": "Foreground Mask"}, "labels")]
-            + [(detection, {"name": "Detection"}, "labels")]
-            + [(segmentation, {"name": "Segmentation"}, "labels")]
+            + [(self.detection, {"name": "Detection"}, "labels")]
+            + [(self.segmentation, {"name": "Segmentation"}, "labels")]
         )
 
     def on_return_infer(self, layers):
