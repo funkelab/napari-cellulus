@@ -238,9 +238,20 @@ class NapariDataset(IterableDataset):
         return anchor_samples, reference_samples
 
     def get_num_anchors(self):
-        return int(
-            self.density * self.unbiased_shape[0] * self.unbiased_shape[1]
-        )
+        if self.num_spatial_dims == 2:
+            return int(
+                self.density * self.unbiased_shape[0] * self.unbiased_shape[1]
+            )
+        elif self.num_spatial_dims == 3:
+            return int(
+                self.density
+                * self.unbiased_shape[0]
+                * self.unbiased_shape[1]
+                * self.unbiased_shape[2]
+            )
 
     def get_num_references(self):
-        return int(self.density * self.kappa**2 * np.pi)
+        if self.num_spatial_dims == 2:
+            return int(self.density * np.pi * self.kappa**2)
+        elif self.num_spatial_dims == 3:
+            return int(self.density * 4 / 3 * np.pi * self.kappa**3)
