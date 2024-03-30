@@ -786,9 +786,8 @@ class Widget(QMainWindow):
         context = (input_size - output_size) // 2
         raw = gp.ArrayKey("RAW")
         prediction = gp.ArrayKey("PREDICT")
-        scan_request = gp.BatchRequest()
 
-        # scan_request.add(raw, input_size)
+        scan_request = gp.BatchRequest()
         scan_request[raw] = gp.Roi(
             (-8,) * self.napari_dataset.get_num_spatial_dims(),
             crop_size_tuple,
