@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QVBoxLayout,
+    QWidget,
 )
 from scipy.ndimage import binary_fill_holes
 from scipy.ndimage import distance_transform_edt as dtedt
@@ -38,47 +39,7 @@ from tqdm import tqdm
 
 from .datasets.napari_dataset import NapariDataset
 from .datasets.napari_image_source import NapariImageSource
-
-
-class Model(torch.nn.Module):
-    def __init__(self, model, selected_axes):
-        super().__init__()
-        self.model = model
-        self.selected_axes = selected_axes
-
-    def forward(self, raw):
-        if "s" in self.selected_axes and "c" in self.selected_axes:
-            pass
-        elif "s" in self.selected_axes and "c" not in self.selected_axes:
-
-            raw = torch.unsqueeze(raw, 1)
-        elif "s" not in self.selected_axes and "c" in self.selected_axes:
-            pass
-        elif "s" not in self.selected_axes and "c" not in self.selected_axes:
-            raw = torch.unsqueeze(raw, 1)
-        return self.model(raw)
-
-    @staticmethod
-    def select_and_add_coordinates(outputs, coordinates):
-        selections = []
-        # outputs.shape = (b, c, h, w) or (b, c, d, h, w)
-        for output, coordinate in zip(outputs, coordinates):
-            if output.ndim == 3:
-                selection = output[:, coordinate[:, 1], coordinate[:, 0]]
-            elif output.ndim == 4:
-                selection = output[
-                    :, coordinate[:, 2], coordinate[:, 1], coordinate[:, 0]
-                ]
-            selection = selection.transpose(1, 0)
-            selection += coordinate
-            selections.append(selection)
-
-        # selection.shape = (b, c, p) where p is the number of selected positions
-        return torch.stack(selections, dim=0)
-
-    def set_infer(self, p_salt_pepper, num_infer_iterations, device):
-        self.model.eval()
-        self.model.set_infer(p_salt_pepper, num_infer_iterations, device)
+from .model import Model
 
 
 class Widget(QMainWindow):
@@ -86,6 +47,7 @@ class Widget(QMainWindow):
         super().__init__()
         self.viewer = napari_viewer
         self.scroll = QScrollArea()
+        self.widget = QWidget()
         # initialize outer layout
         layout = QVBoxLayout()
 
@@ -115,11 +77,18 @@ class Widget(QMainWindow):
         layout.addLayout(self.grid_5)
         layout.addLayout(self.grid_6)
         layout.addLayout(self.grid_7)
-        self.set_scroll_area(layout)
+        self.widget.setLayout(layout)
+        self.set_scroll_area()
         self.viewer.layers.events.inserted.connect(self.update_raw_selector)
         self.viewer.layers.events.removed.connect(self.update_raw_selector)
 
     def update_raw_selector(self, event):
+        """
+        Whenever a new image is added or removed by the user,
+        this function is called.
+        It updates the `raw_selector` attribute.
+
+        """
         count = 0
         for i in range(self.raw_selector.count() - 1, -1, -1):
             if self.raw_selector.itemText(i) == f"{event.value}":
@@ -130,6 +99,9 @@ class Widget(QMainWindow):
             self.raw_selector.addItems([f"{event.value}"])
 
     def set_grid_0(self):
+        """
+        Specifies the title of the plugin.
+        """
         text_label = QLabel("<h3>Cellulus</h3>")
         method_description_label = QLabel(
             '<small>Unsupervised Learning of Object-Centric Embeddings<br>for Cell Instance Segmentation in Microscopy Images.<br>If you are using this in your research, please <a href="https://github.com/funkelab/cellulus#citation" style="color:gray;">cite us</a>.</small><br><small><tt><a href="https://github.com/funkelab/cellulus" style="color:gray;">https://github.com/funkelab/cellulus</a></tt></small>'
@@ -138,6 +110,9 @@ class Widget(QMainWindow):
         self.grid_0.addWidget(method_description_label, 1, 0, 2, 1)
 
     def set_grid_1(self):
+        """
+        Specifies the device used for training and inference.
+        """
         device_label = QLabel(self)
         device_label.setText("Device")
         self.device_combo_box = QComboBox(self)
@@ -149,6 +124,10 @@ class Widget(QMainWindow):
         self.grid_1.addWidget(self.device_combo_box, 0, 1, 1, 1)
 
     def set_grid_2(self):
+        """
+        Specifies the raw_selector attribute.
+        This is needed to identify which axes does the image contain.
+        """
         self.raw_selector = QComboBox(self)
         for layer in self.viewer.layers:
             self.raw_selector.addItem(f"{layer}")
@@ -166,11 +145,9 @@ class Widget(QMainWindow):
         self.grid_2.addWidget(self.x_check_box, 1, 4, 1, 1)
 
     def set_grid_3(self):
-        normalization_factor_label = QLabel(self)
-        normalization_factor_label.setText("Normalization Factor")
-        self.normalization_factor_line = QLineEdit(self)
-        self.normalization_factor_line.setAlignment(Qt.AlignCenter)
-        self.normalization_factor_line.setText("1.0")
+        """
+        Specifies the configuration parameters for training.
+        """
         crop_size_label = QLabel(self)
         crop_size_label.setText("Crop Size")
         self.crop_size_line = QLineEdit(self)
@@ -186,16 +163,17 @@ class Widget(QMainWindow):
         self.max_iterations_line = QLineEdit(self)
         self.max_iterations_line.setAlignment(Qt.AlignCenter)
         self.max_iterations_line.setText("5000")
-        self.grid_3.addWidget(normalization_factor_label, 0, 0, 1, 1)
-        self.grid_3.addWidget(self.normalization_factor_line, 0, 1, 1, 1)
-        self.grid_3.addWidget(crop_size_label, 1, 0, 1, 1)
-        self.grid_3.addWidget(self.crop_size_line, 1, 1, 1, 1)
-        self.grid_3.addWidget(batch_size_label, 2, 0, 1, 1)
-        self.grid_3.addWidget(self.batch_size_line, 2, 1, 1, 1)
-        self.grid_3.addWidget(max_iterations_label, 3, 0, 1, 1)
-        self.grid_3.addWidget(self.max_iterations_line, 3, 1, 1, 1)
+        self.grid_3.addWidget(crop_size_label, 0, 0, 1, 1)
+        self.grid_3.addWidget(self.crop_size_line, 0, 1, 1, 1)
+        self.grid_3.addWidget(batch_size_label, 1, 0, 1, 1)
+        self.grid_3.addWidget(self.batch_size_line, 1, 1, 1, 1)
+        self.grid_3.addWidget(max_iterations_label, 2, 0, 1, 1)
+        self.grid_3.addWidget(self.max_iterations_line, 2, 1, 1, 1)
 
     def set_grid_4(self):
+        """
+        Specifies the configuration parameters for the model.
+        """
         feature_maps_label = QLabel(self)
         feature_maps_label.setText("Number of feature maps")
         self.feature_maps_line = QLineEdit(self)
@@ -210,7 +188,7 @@ class Widget(QMainWindow):
             "Train from scratch"
         )
         self.train_model_from_scratch_checkbox.stateChanged.connect(
-            self.effect_load_weights
+            self.affect_load_weights
         )
         self.load_model_button = QPushButton("Load weights")
         self.load_model_button.clicked.connect(self.load_weights)
@@ -225,6 +203,9 @@ class Widget(QMainWindow):
         self.grid_4.addWidget(self.load_model_button, 2, 1, 1, 1)
 
     def set_grid_5(self):
+        """
+        Specifies the loss widget.
+        """
         self.losses_widget = pg.PlotWidget()
         self.losses_widget.setBackground((37, 41, 49))
         styles = {"color": "white", "font-size": "16px"}
@@ -251,6 +232,9 @@ class Widget(QMainWindow):
         self.save_weights_button.clicked.connect(self.save_weights)
 
     def set_grid_6(self):
+        """
+        Specifies the inference configuration parameters.
+        """
         threshold_label = QLabel("Threshold")
         self.threshold_line = QLineEdit(self)
         self.threshold_line.textChanged.connect(self.prepare_thresholds)
@@ -267,7 +251,8 @@ class Widget(QMainWindow):
         self.radio_button_nucleus = QRadioButton("Nucleus")
         self.radio_button_group.addButton(self.radio_button_nucleus)
         self.radio_button_group.addButton(self.radio_button_cell)
-
+        self.radio_button_cell.toggled.connect(self.update_post_processing)
+        self.radio_button_nucleus.toggled.connect(self.update_post_processing)
         self.radio_button_cell.setChecked(True)
         self.min_size_label = QLabel("Minimum Size")
         self.min_size_line = QLineEdit(self)
@@ -298,22 +283,33 @@ class Widget(QMainWindow):
         )
 
     def set_grid_7(self):
-        # Initialize Feedback Button
+        """
+        Specifies the feedback URL.
+        """
+
         feedback_label = QLabel(
             '<small>Please share any feedback <a href="https://github.com/funkelab/napari-cellulus/issues/new/choose" style="color:gray;">here</a>.</small>'
         )
         self.grid_7.addWidget(feedback_label, 0, 0, 2, 1)
 
-    def set_scroll_area(self, layout):
-        self.scroll.setLayout(layout)
+    def set_scroll_area(self):
+        """
+        Creates a scroll area.
+        In case the main napari window is resized, the scroll area
+        would appear.
+        """
+        self.scroll.setWidget(self.widget)
         self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll.setWidgetResizable(True)
 
-        self.setFixedWidth(300)
+        self.setFixedWidth(320)
         self.setCentralWidget(self.scroll)
 
     def get_selected_axes(self):
+        """
+        Returns the axes based on which of the checkboxes were selected.
+        """
         names = []
         for name, check_box in zip(
             "sczyx",
@@ -331,6 +327,9 @@ class Widget(QMainWindow):
         return names
 
     def create_configs(self):
+        """
+        This reads from the various line edits and initializes config objects.
+        """
         if not hasattr(self, "train_config"):
             self.train_config = TrainConfig(
                 crop_size=[int(self.crop_size_line.text())],
@@ -347,9 +346,7 @@ class Widget(QMainWindow):
             self.experiment_config = ExperimentConfig(
                 train_config=asdict(self.train_config),
                 model_config=asdict(self.model_config),
-                normalization_factor=float(
-                    self.normalization_factor_line.text()
-                ),
+                normalization_factor=1.0,
             )
         if not hasattr(self, "losses"):
             self.losses = []
@@ -364,6 +361,11 @@ class Widget(QMainWindow):
         self.min_size_line.setEnabled(False)
 
     def update_inference_widgets(self, event: Event):
+        """
+        This function listens to which sample the viewer is currently on,
+        and displays the corresponding inference config parameter for the
+        present sample.
+        """
         if self.s_check_box.isChecked():
             shape = event.value
             sample_index = shape[0]
@@ -375,11 +377,11 @@ class Widget(QMainWindow):
                     str(round(self.thresholds[sample_index], 3))
                 )
             if (
-                hasattr(self, "band_widths")
-                and self.band_widths[sample_index] is not None
+                hasattr(self, "bandwidths")
+                and self.bandwidths[sample_index] is not None
             ):
                 self.bandwidth_line.setText(
-                    str(round(self.band_widths[sample_index], 3))
+                    str(round(self.bandwidths[sample_index], 3))
                 )
             if (
                 hasattr(self, "min_sizes")
@@ -390,6 +392,10 @@ class Widget(QMainWindow):
                 )
 
     def prepare_for_start_training(self):
+        """
+        Each time the `train` button is clicked,
+        the inference config line edits and other buttons are disabled.
+        """
         self.start_training_button.setEnabled(False)
         self.stop_training_button.setEnabled(True)
         self.save_weights_button.setEnabled(False)
@@ -407,6 +413,10 @@ class Widget(QMainWindow):
         self.train_worker.start()
 
     def remove_inference_attributes(self):
+        """
+        When training is initiated, then existing attributes such as
+        `embeddings`, `detection` etc are removed.
+        """
         if hasattr(self, "embeddings"):
             delattr(self, "embeddings")
         if hasattr(self, "detection"):
@@ -417,17 +427,24 @@ class Widget(QMainWindow):
             delattr(self, "thresholds")
         if hasattr(self, "thresholds_last"):
             delattr(self, "thresholds_last")
-        if hasattr(self, "band_widths"):
-            delattr(self, "band_widths")
-        if hasattr(self, "band_widths_last"):
-            delattr(self, "band_widths_last")
+        if hasattr(self, "bandwidths"):
+            delattr(self, "bandwidths")
+        if hasattr(self, "bandwidths_last"):
+            delattr(self, "bandwidths_last")
         if hasattr(self, "min_sizes"):
             delattr(self, "min_sizes")
         if hasattr(self, "min_sizes_last"):
             delattr(self, "min_sizes_last")
+        if hasattr(self, "post_processing"):
+            delattr(self, "post_processing")
+        if hasattr(self, "post_processing_last"):
+            delattr(self, "post_processing_last")
 
     @thread_worker
     def train(self):
+        """
+        The main function where training happens!
+        """
         self.create_configs()  # configs
         self.remove_inference_attributes()
         self.viewer.dims.events.current_step.connect(
@@ -552,6 +569,9 @@ class Widget(QMainWindow):
         return
 
     def on_yield_training(self, loss_iteration):
+        """
+        The loss plot is updated every training iteration.
+        """
         loss, iteration = loss_iteration
         print(f"===> Iteration: {iteration}, loss: {loss:.6f}")
         self.iterations.append(iteration)
@@ -559,6 +579,9 @@ class Widget(QMainWindow):
         self.losses_widget.plot(self.iterations, self.losses)
 
     def prepare_for_stop_training(self):
+        """
+        This function defines the sequence of events once training is stopped.
+        """
         self.start_training_button.setEnabled(True)
         self.stop_training_button.setEnabled(True)
         self.save_weights_button.setEnabled(True)
@@ -566,7 +589,7 @@ class Widget(QMainWindow):
             self.threshold_line.setEnabled(False)
         else:
             self.threshold_line.setEnabled(True)
-        if not hasattr(self, "band_widths"):
+        if not hasattr(self, "bandwidths"):
             self.bandwidth_line.setEnabled(False)
         else:
             self.bandwidth_line.setEnabled(True)
@@ -591,7 +614,9 @@ class Widget(QMainWindow):
             self.model_config.checkpoint = checkpoint_file_name
 
     def prepare_for_start_inference(self):
-
+        """
+        When the inference begins, then training-related buttons are disabled.
+        """
         self.start_training_button.setEnabled(False)
         self.stop_training_button.setEnabled(False)
         self.save_weights_button.setEnabled(False)
@@ -615,6 +640,9 @@ class Widget(QMainWindow):
         self.inference_worker.start()
 
     def prepare_for_stop_inference(self):
+        """
+        This function defines the sequence of events which ensue once inference is stopped.
+        """
         self.start_training_button.setEnabled(True)
         self.stop_training_button.setEnabled(True)
         self.save_weights_button.setEnabled(True)
@@ -628,13 +656,16 @@ class Widget(QMainWindow):
         self.stop_inference_button.setEnabled(True)
         if self.napari_dataset.get_num_samples() == 0:
             self.threshold_line.setText(str(round(self.thresholds[0], 3)))
-            self.bandwidth_line.setText(str(round(self.band_widths[0], 3)))
+            self.bandwidth_line.setText(str(round(self.bandwidths[0], 3)))
             self.min_size_line.setText(str(round(self.min_sizes[0], 3)))
         if self.inference_worker is not None:
             self.inference_worker.quit()
 
     @thread_worker
     def infer(self):
+        """
+        The main inference function.
+        """
         for layer in self.viewer.layers:
             if f"{layer}" == self.raw_selector.currentText():
                 raw_image_layer = layer
@@ -650,18 +681,18 @@ class Widget(QMainWindow):
         if not hasattr(self, "thresholds_last"):
             self.thresholds_last = self.thresholds.copy()
 
-        if not hasattr(self, "band_widths") and (
+        if not hasattr(self, "bandwidths") and (
             self.inference_config.bandwidth is None
         ):
-            self.band_widths = (
-                [0.25 * self.experiment_config.object_size]
+            self.bandwidths = (
+                [0.5 * self.experiment_config.object_size]
                 * self.napari_dataset.get_num_samples()
                 if self.napari_dataset.get_num_samples() != 0
-                else [0.25 * self.experiment_config.object_size]
+                else [0.5 * self.experiment_config.object_size]
             )
 
-        if not hasattr(self, "band_widths_last"):
-            self.band_widths_last = self.band_widths.copy()
+        if not hasattr(self, "bandwidths_last"):
+            self.bandwidths_last = self.bandwidths.copy()
 
         if (
             not hasattr(self, "min_sizes")
@@ -719,6 +750,14 @@ class Widget(QMainWindow):
 
         if not hasattr(self, "min_sizes_last"):
             self.min_sizes_last = self.min_sizes.copy()
+
+        if not hasattr(self, "post_processing"):
+            self.post_processing = (
+                "cell" if self.radio_button_cell.isChecked() else "nucleus"
+            )
+
+        if not hasattr(self, "post_processing_last"):
+            self.post_processing_last = self.post_processing
 
         # set in eval mode
         self.model = self.model.to(self.device)
@@ -930,12 +969,12 @@ class Widget(QMainWindow):
 
             if (
                 self.thresholds[sample] != self.thresholds_last[sample]
-                or self.band_widths[sample] != self.band_widths_last[sample]
+                or self.bandwidths[sample] != self.bandwidths_last[sample]
             ):
                 detection_sample = mean_shift_segmentation(
                     embeddings_mean,
                     embeddings_std,
-                    bandwidth=self.band_widths[sample],
+                    bandwidth=self.bandwidths[sample],
                     min_size=self.inference_config.min_size,
                     reduction_probability=self.inference_config.reduction_probability,
                     threshold=self.thresholds[sample],
@@ -943,10 +982,13 @@ class Widget(QMainWindow):
                 )
                 self.detection[sample, 0, ...] = detection_sample
             self.thresholds_last[sample] = self.thresholds[sample]
-            self.band_widths_last[sample] = self.band_widths[sample]
+            self.bandwidths_last[sample] = self.bandwidths[sample]
 
         print("Converting Detections to Segmentations ...")
-        if hasattr(self, "segmentation"):
+        if (
+            hasattr(self, "segmentation")
+            and self.post_processing == self.post_processing_last
+        ):
             pass
         else:
             self.segmentation = np.zeros_like(
@@ -967,7 +1009,7 @@ class Widget(QMainWindow):
         elif self.radio_button_nucleus.isChecked():
             raw_image = raw_image_layer.data
             for sample in tqdm(range(self.embeddings.shape[0])):
-                segmentation_sample = self.detection[sample, 0]
+                segmentation_sample = self.detection[sample, 0].copy()
                 if (
                     self.napari_dataset.get_num_samples() == 0
                     and self.napari_dataset.get_num_channels() == 0
@@ -1042,11 +1084,16 @@ class Widget(QMainWindow):
 
         # size filter - remove small objects
         for sample in tqdm(range(self.embeddings.shape[0])):
-            if self.min_sizes[sample] != self.min_sizes_last[sample]:
+            if (
+                self.min_sizes[sample] != self.min_sizes_last[sample]
+                or self.post_processing_last != self.post_processing
+            ):
                 self.segmentation[sample, 0, ...] = size_filter(
                     self.segmentation[sample, 0], self.min_sizes[sample]
                 )
             self.min_sizes_last[sample] = self.min_sizes[sample]
+        self.post_processing_last = self.post_processing
+
         return (
             embeddings_layers
             + [(foreground_mask, {"name": "Foreground Mask"}, "labels")]
@@ -1055,6 +1102,15 @@ class Widget(QMainWindow):
         )
 
     def on_return_infer(self, layers):
+        """
+        Once inference is over, the old result layers are removed
+        and the new output layers are displayed.
+
+        Args:
+            layers: Tuple
+                    (embedding_layers, foreground layer, detection layer, segmentation layer)
+
+        """
 
         if "Offset (x)" in self.viewer.layers:
             del self.viewer.layers["Offset (x)"]
@@ -1092,18 +1148,35 @@ class Widget(QMainWindow):
         self.prepare_for_stop_inference()
 
     def prepare_thresholds(self):
+        """
+        In case, the `Threshold` lineedit is changed by the user,
+        the attribute `thresholds` is updated.
+        """
         sample_index = self.viewer.dims.current_step[0]
         self.thresholds[sample_index] = float(self.threshold_line.text())
 
     def prepare_bandwidths(self):
+        """
+        In case, the `Bandwidth` lineedit is changed by the user,
+        the attribute `bandwidths` is updated.
+        """
         sample_index = self.viewer.dims.current_step[0]
-        self.band_widths[sample_index] = float(self.bandwidth_line.text())
+        self.bandwidths[sample_index] = float(self.bandwidth_line.text())
 
     def prepare_min_sizes(self):
+        """
+        In case, the `Minimum Size` lineedit is changed by the user,
+        the attribute `min_sizes` is updated.
+
+        """
         sample_index = self.viewer.dims.current_step[0]
         self.min_sizes[sample_index] = float(self.min_size_line.text())
 
     def load_weights(self):
+        """
+        Describes sequence of actions, which ensue after `Load Weights` button is pressed
+
+        """
         file_name, _ = QFileDialog.getOpenFileName(
             caption="Load Model Weights"
         )
@@ -1112,13 +1185,27 @@ class Widget(QMainWindow):
             f"Model weights will be loaded from {self.pre_trained_model_checkpoint}"
         )
 
-    def effect_load_weights(self):
+    def update_post_processing(self):
+        self.post_processing = (
+            "cell" if self.radio_button_nucleus.isChecked() else "nucleus"
+        )
+
+    def affect_load_weights(self):
+        """
+        In case `train from scratch` checkbox is selected,
+        the `Load weights` is disabled, and vice versa.
+
+        """
         if self.train_model_from_scratch_checkbox.isChecked():
             self.load_model_button.setEnabled(False)
         else:
             self.load_model_button.setEnabled(True)
 
     def save_weights(self):
+        """
+        Describes sequence of actions which ensue, after `Save weights` button is pressed
+
+        """
         checkpoint_file_name, _ = QFileDialog.getSaveFileName(
             caption="Save Model Weights"
         )
