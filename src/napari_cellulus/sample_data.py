@@ -2,19 +2,19 @@ from pathlib import Path
 
 import numpy as np
 
-TISSUE_NET_SAMPLE = (
-    Path(__file__).parent / "sample_data/tissue_net_skin_sample.npz"
+FLUO_C2DL_HUH7_SAMPLE = (
+    Path(__file__).parent / "sample_data/Fluo-C2DL-Huh7-sample.npz"
 )
 
 
-def tissue_net_sample():
-    data = np.load(TISSUE_NET_SAMPLE)
-    raw, gt = data["raw"], data["gt"]
+def fluo_c2dl_huh7_sample():
+    data = np.load(FLUO_C2DL_HUH7_SAMPLE)
+    raw = data["raw"]
 
     num_samples = raw.shape[0]
-    indices = np.random.randint(0, num_samples - 1, 10)
+    indices = np.random.choice(np.arange(num_samples), 5, replace=False)
     raw = raw[indices]
-    gt = gt[indices]
+
     return [
         (
             raw,
@@ -23,13 +23,5 @@ def tissue_net_sample():
                 "metadata": {"axes": ["s", "c", "y", "x"]},
             },
             "image",
-        ),
-        (
-            gt,
-            {
-                "name": "Labels",
-                "metadata": {"axes": ["s", "c", "y", "x"]},
-            },
-            "Labels",
-        ),
+        )
     ]
