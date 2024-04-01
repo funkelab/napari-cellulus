@@ -1,4 +1,7 @@
+
 <h2 align="center">A napari plugin for cellulus</h2>
+
+
 
 - **[Introduction](#introduction)**
 - **[Installation](#installation)**
@@ -55,8 +58,10 @@ Run the following commands in a terminal window:
 conda activate napari-cellulus
 napari
 ```
+[demo_cellulus.webm](https://github.com/funkelab/napari-cellulus/assets/34229641/35cb09de-c875-487d-9890-86082dcd95b2)
 
-Next, select `Cellulus` from the `Plugins` drop-down menu.
+
+
 
 ### Citation
 
