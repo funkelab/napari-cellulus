@@ -1,5 +1,5 @@
 __version__ = "0.1.0"
 
-from .sample_data import fluo_c2dl_huh7_sample
+from .load_sample_data import load_fluo_c2dl_huh7_sample
 
-__all__ = ("fluo_c2dl_huh7_sample",)
+__all__ = ("load_fluo_c2dl_huh7_sample",)
