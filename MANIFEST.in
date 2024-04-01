@@ -1,4 +1,4 @@
 include LICENSE
 include README.md
 
-recursive-include napari_cellulus/sample_data/*.npy
+recursive-include src/napari_cellulus/sample_data/*.npy
