@@ -1,4 +1,3 @@
-include LICENSE
-include README.md
-
-recursive-include src/napari_cellulus/sample_data/*.npy
+include src/napari_cellulus/sample_data/*.npy
+include src/napari_cellulus/napari.yaml
+recursive-exclude * __pycache__
