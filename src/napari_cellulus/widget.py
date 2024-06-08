@@ -14,9 +14,11 @@ from cellulus.models import get_model
 from cellulus.train import train_iteration
 from cellulus.utils.mean_shift import mean_shift_segmentation
 from cellulus.utils.misc import size_filter
+from gunpowder.nodes.scan import ScanCallback
 from napari.qt.threading import thread_worker
+from napari.utils import progress
 from napari.utils.events import Event
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -40,9 +42,32 @@ from tqdm import tqdm
 from .datasets.napari_dataset import NapariDataset
 from .datasets.napari_image_source import NapariImageSource
 from .model import Model
+import logging
+logging.basicConfig(level=logging.INFO)
+
+# from PySide2.QtCore import Signal
+
+class TqdmCallback(ScanCallback):
+    """A default callback that uses ``tqdm`` to show a progress bar."""
+
+    def __init__(self, signal):
+        self.signal = signal
+        self.num_processed = 0
+        self.num_total = 0
+    def start(self, num_total):
+        self.num_total = num_total
+        self.num_processed = 0
+        self.signal.emit(0, num_total)
+
+    def update(self, num_processed):
+
+        self.signal.emit(num_processed-self.num_processed, self.num_total)
+        self.num_processed = num_processed
+
 
 
 class Widget(QMainWindow):
+    progress_signal = Signal(int, int)
     def __init__(self, napari_viewer):
         super().__init__()
         self.viewer = napari_viewer
@@ -217,6 +242,7 @@ class Widget(QMainWindow):
         self.stop_training_button.setFixedSize(88, 30)
         self.save_weights_button = QPushButton("Save weights")
         self.save_weights_button.setFixedSize(88, 30)
+
 
         self.grid_5.addWidget(self.losses_widget, 0, 0, 4, 4)
         self.grid_5.addWidget(self.start_training_button, 5, 0, 1, 1)
@@ -629,13 +655,23 @@ class Widget(QMainWindow):
         self.stop_inference_button.setEnabled(True)
 
         self.inference_config = InferenceConfig(
-            crop_size=[min(self.napari_dataset.get_spatial_array()) + 16],
+            crop_size = [252],
+            #crop_size=[min(self.napari_dataset.get_spatial_array()) + 16], #TODO
             post_processing="cell"
             if self.radio_button_cell.isChecked()
             else "nucleus",
         )
+        self.progress_callback = TqdmCallback(self.progress_signal)
+        self.progress_bar_infer = progress(desc="Inference Progress")
+        # self.progress_bar_detect = progress(desc="Detection Progress")
+        # self.progress_bar_segment = progress(desc="Segmentation Progress")
+
+
 
         self.inference_worker = self.infer()
+        self.progress_signal.connect(self.update_progress)
+
+        # self.inference_worker.yielded.connect(self.update_progress)
         self.inference_worker.returned.connect(self.on_return_infer)
         self.inference_worker.start()
 
@@ -661,11 +697,18 @@ class Widget(QMainWindow):
         if self.inference_worker is not None:
             self.inference_worker.quit()
 
+    def update_progress(self, increment, total):
+        self.progress_bar_infer.total = total
+        self.progress_bar_infer.update(increment)
+
+
+
     @thread_worker
     def infer(self):
         """
         The main inference function.
         """
+
         for layer in self.viewer.layers:
             if f"{layer}" == self.raw_selector.currentText():
                 raw_image_layer = layer
@@ -769,6 +812,7 @@ class Widget(QMainWindow):
             device=self.device,
         )
 
+
         if self.napari_dataset.get_num_spatial_dims() == 2:
             crop_size_tuple = (self.inference_config.crop_size[0],) * 2
             predicted_crop_size_tuple = (
@@ -858,18 +902,22 @@ class Widget(QMainWindow):
             spatial_dims=self.napari_dataset.get_spatial_dims(),
         )
 
+
+
         if self.napari_dataset.get_num_samples() == 0:
             pipeline += (
                 gp.Pad(raw, context, mode="reflect")
                 + gp.Unsqueeze([raw], 0)
                 + predict
-                + gp.Scan(scan_request)
+                + gp.Scan(scan_request,
+                          progress_callback=self.progress_callback)
             )
         else:
             pipeline += (
                 gp.Pad(raw, context, mode="reflect")
                 + predict
-                + gp.Scan(scan_request)
+                + gp.Scan(scan_request,
+                          progress_callback=self.progress_callback, )
             )
 
         request = gp.BatchRequest()
