@@ -791,25 +791,14 @@ class Widget(QMainWindow):
         )
 
         if self.napari_dataset.get_num_channels() == 0:
-            output_shape = gp.Coordinate(
-                self.model(
-                    torch.zeros((1, *crop_size_tuple), dtype=torch.float32).to(
-                        self.device
-                    )
-                ).shape
-            )
+            output_shape = gp.Coordinate((1, 1, *predicted_crop_size_tuple))
         else:
             output_shape = gp.Coordinate(
-                self.model(
-                    torch.zeros(
-                        (
-                            1,
-                            self.napari_dataset.get_num_channels(),
-                            *crop_size_tuple,
-                        ),
-                        dtype=torch.float32,
-                    ).to(self.device)
-                ).shape
+                (
+                    1,
+                    self.napari_dataset.get_num_channels(),
+                    *predicted_crop_size_tuple,
+                )
             )
 
         voxel_size = (
@@ -932,26 +921,48 @@ class Widget(QMainWindow):
 
             embeddings_centered[sample] = embeddings_centered_sample
 
-        embeddings_layers = [
-            (
-                embeddings_centered[:, i : i + 1, ...].copy(),
-                {
-                    "name": "Offset ("
-                    + "zyx"[self.napari_dataset.get_num_spatial_dims() - i]
-                    + ")"
-                    if i < self.napari_dataset.get_num_spatial_dims()
-                    else "Uncertainty",
-                    "colormap": colormaps[
-                        self.napari_dataset.get_num_spatial_dims() - i
-                    ]
-                    if i < self.napari_dataset.get_num_spatial_dims()
-                    else "gray",
-                    "blending": "additive",
-                },
-                "image",
-            )
-            for i in range(self.napari_dataset.get_num_spatial_dims() + 1)
-        ]
+        if self.napari_dataset.get_num_channels() == 0:
+            embeddings_layers = [
+                (
+                    embeddings_centered[:, i, ...].copy(),
+                    {
+                        "name": "Offset ("
+                        + "zyx"[self.napari_dataset.get_num_spatial_dims() - i]
+                        + ")"
+                        if i < self.napari_dataset.get_num_spatial_dims()
+                        else "Uncertainty",
+                        "colormap": colormaps[
+                            self.napari_dataset.get_num_spatial_dims() - i
+                        ]
+                        if i < self.napari_dataset.get_num_spatial_dims()
+                        else "gray",
+                        "blending": "additive",
+                    },
+                    "image",
+                )
+                for i in range(self.napari_dataset.get_num_spatial_dims() + 1)
+            ]
+        else:
+            embeddings_layers = [
+                (
+                    embeddings_centered[:, i : i + 1, ...].copy(),
+                    {
+                        "name": "Offset ("
+                        + "zyx"[self.napari_dataset.get_num_spatial_dims() - i]
+                        + ")"
+                        if i < self.napari_dataset.get_num_spatial_dims()
+                        else "Uncertainty",
+                        "colormap": colormaps[
+                            self.napari_dataset.get_num_spatial_dims() - i
+                        ]
+                        if i < self.napari_dataset.get_num_spatial_dims()
+                        else "gray",
+                        "blending": "additive",
+                    },
+                    "image",
+                )
+                for i in range(self.napari_dataset.get_num_spatial_dims() + 1)
+            ]
 
         print("Clustering Objects in the obtained Foreground Mask ...")
         if hasattr(self, "detection"):
