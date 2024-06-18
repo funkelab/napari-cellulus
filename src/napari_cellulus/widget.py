@@ -247,7 +247,7 @@ class Widget(QMainWindow):
         self.bandwidth_line.textChanged.connect(self.prepare_bandwidths)
 
         self.radio_button_group = QButtonGroup(self)
-        self.radio_button_cell = QRadioButton("Cell")
+        self.radio_button_cell = QRadioButton("Cell Membrane")
         self.radio_button_nucleus = QRadioButton("Nucleus")
         self.radio_button_group.addButton(self.radio_button_nucleus)
         self.radio_button_group.addButton(self.radio_button_cell)
@@ -1095,13 +1095,10 @@ class Widget(QMainWindow):
 
         # size filter - remove small objects
         for sample in tqdm(range(self.embeddings.shape[0])):
-            if (
-                self.min_sizes[sample] != self.min_sizes_last[sample]
-                or self.post_processing_last != self.post_processing
-            ):
-                self.segmentation[sample, 0, ...] = size_filter(
-                    self.segmentation[sample, 0], self.min_sizes[sample]
-                )
+            # TODO (only run if min_size_last is not the same as min_size)
+            self.segmentation[sample, 0, ...] = size_filter(
+                self.segmentation[sample, 0], self.min_sizes[sample]
+            )
             self.min_sizes_last[sample] = self.min_sizes[sample]
         self.post_processing_last = self.post_processing
 
@@ -1198,7 +1195,7 @@ class Widget(QMainWindow):
 
     def update_post_processing(self):
         self.post_processing = (
-            "cell" if self.radio_button_nucleus.isChecked() else "nucleus"
+            "cell" if self.radio_button_cell.isChecked() else "nucleus"
         )
 
     def affect_load_weights(self):
