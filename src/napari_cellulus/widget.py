@@ -478,9 +478,11 @@ class Widget(QMainWindow):
         )
         # Set model
         model_original = get_model(
-            in_channels=self.napari_dataset.get_num_channels()
-            if self.napari_dataset.get_num_channels() != 0
-            else 1,
+            in_channels=(
+                self.napari_dataset.get_num_channels()
+                if self.napari_dataset.get_num_channels() != 0
+                else 1
+            ),
             out_channels=self.napari_dataset.get_num_spatial_dims(),
             num_fmaps=self.model_config.num_fmaps,
             fmap_inc_factor=self.model_config.fmap_inc_factor,
@@ -630,9 +632,9 @@ class Widget(QMainWindow):
 
         self.inference_config = InferenceConfig(
             crop_size=[min(self.napari_dataset.get_spatial_array()) + 16],
-            post_processing="cell"
-            if self.radio_button_cell.isChecked()
-            else "nucleus",
+            post_processing=(
+                "cell" if self.radio_button_cell.isChecked() else "nucleus"
+            ),
         )
 
         self.inference_worker = self.infer()
@@ -783,9 +785,11 @@ class Widget(QMainWindow):
         input_shape = gp.Coordinate(
             (
                 1,
-                self.napari_dataset.get_num_channels()
-                if self.napari_dataset.get_num_channels() != 0
-                else 1,
+                (
+                    self.napari_dataset.get_num_channels()
+                    if self.napari_dataset.get_num_channels() != 0
+                    else 1
+                ),
                 *crop_size_tuple,
             )
         )
@@ -926,16 +930,22 @@ class Widget(QMainWindow):
                 (
                     embeddings_centered[:, i, ...].copy(),
                     {
-                        "name": "Offset ("
-                        + "zyx"[self.napari_dataset.get_num_spatial_dims() - i]
-                        + ")"
-                        if i < self.napari_dataset.get_num_spatial_dims()
-                        else "Uncertainty",
-                        "colormap": colormaps[
-                            self.napari_dataset.get_num_spatial_dims() - i
-                        ]
-                        if i < self.napari_dataset.get_num_spatial_dims()
-                        else "gray",
+                        "name": (
+                            "Offset ("
+                            + "zyx"[
+                                self.napari_dataset.get_num_spatial_dims() - i
+                            ]
+                            + ")"
+                            if i < self.napari_dataset.get_num_spatial_dims()
+                            else "Uncertainty"
+                        ),
+                        "colormap": (
+                            colormaps[
+                                self.napari_dataset.get_num_spatial_dims() - i
+                            ]
+                            if i < self.napari_dataset.get_num_spatial_dims()
+                            else "gray"
+                        ),
                         "blending": "additive",
                     },
                     "image",
@@ -947,16 +957,22 @@ class Widget(QMainWindow):
                 (
                     embeddings_centered[:, i : i + 1, ...].copy(),
                     {
-                        "name": "Offset ("
-                        + "zyx"[self.napari_dataset.get_num_spatial_dims() - i]
-                        + ")"
-                        if i < self.napari_dataset.get_num_spatial_dims()
-                        else "Uncertainty",
-                        "colormap": colormaps[
-                            self.napari_dataset.get_num_spatial_dims() - i
-                        ]
-                        if i < self.napari_dataset.get_num_spatial_dims()
-                        else "gray",
+                        "name": (
+                            "Offset ("
+                            + "zyx"[
+                                self.napari_dataset.get_num_spatial_dims() - i
+                            ]
+                            + ")"
+                            if i < self.napari_dataset.get_num_spatial_dims()
+                            else "Uncertainty"
+                        ),
+                        "colormap": (
+                            colormaps[
+                                self.napari_dataset.get_num_spatial_dims() - i
+                            ]
+                            if i < self.napari_dataset.get_num_spatial_dims()
+                            else "gray"
+                        ),
                         "blending": "additive",
                     },
                     "image",
